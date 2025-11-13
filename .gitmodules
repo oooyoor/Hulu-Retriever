@@ -1,0 +1,6 @@
+[submodule "external/hnswlib"]
+	path = external/hnswlib
+	url = git@github.com:nmslib/hnswlib.git
+[submodule "external/spdlog"]
+	path = external/spdlog
+	url = git@github.com:gabime/spdlog.git
