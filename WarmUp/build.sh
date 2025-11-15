@@ -1,0 +1,39 @@
+#!/bin/bash
+set -e
+
+echo "=== Building WarmUp Exec ==="
+
+# 清理并创建构建目录
+if [ -d "build" ]; then
+    rm -rf build
+fi
+mkdir -p build
+cd build
+
+# 编译配置
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Ofast -march=native" ..
+make -j$(nproc)
+
+cd ..
+
+# 确保 execs 文件夹存在
+mkdir -p execs
+
+# 如果 execs/warmup 不存在，提示错误
+if [ ! -f "execs/warmup" ]; then
+    echo "Error: execs/warmup does not exist. Build output missing?"
+    exit 1
+fi
+
+# 判断是否提供了 $1
+if [ -z "$1" ]; then
+    echo "No output name provided. 'execs/warmup' will be kept."
+else
+    echo "Renaming execs/warmup to execs/$1 ..."
+    mv execs/lab "execs/$1"
+fi
+
+# 清理构建文件
+rm -rf build
+
+echo "=== Build Done ==="
