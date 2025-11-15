@@ -1,5 +1,5 @@
 #pragma once
-
+#include <set>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -11,6 +11,16 @@
 #include <stdint.h>     // uint8_t, uint16_t
 #include <iomanip>      // std::setw, std::setfill
 
+
+template <typename T, typename F>
+float get_recall(std::vector<T> r1, std::vector<F> r2, int K)
+{
+    std::set<T> a(r1.begin(), r1.begin() + K);
+    std::set<T> b(r2.begin(), r2.begin() + K);
+    std::set<T> result;
+    set_intersection(a.begin(), a.end(), b.begin(), b.end(), std::inserter(result, result.begin()));
+    return (float)result.size() / a.size();
+}
 
 /**
  * @brief 读取 fvecs 文件
