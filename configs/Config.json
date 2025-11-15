@@ -1,8 +1,11 @@
 {
     "dev_path": "/dev/nvme0n1",
+    "raw_or_basefs": "fs",
+    "fs_data_dir_path":"/mnt/nvme0n1/lab2",
     "hd5f_file_root_dir": "/home/zqf/Data/HDF5_Files/",
     "fvecs_gt_root_dir": "/home/zqf/HULU-R/Data/",
     "hnsw_index_root_dir": "/home/zqf/HULU-R/Data/hnsw_indices/",
+    "max_elements": 1000000,
     "gt_batch_size": 20000,
     "gt_gt_k": 100,
     "topk": 100,
