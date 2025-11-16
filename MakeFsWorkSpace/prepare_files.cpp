@@ -20,6 +20,8 @@ struct Config {
     std::size_t file_size = 4096;
     std::size_t threads = 64;
     bool create_tree = true;
+    bool skip_lab1 = false;
+    int fanout = 100; // 默认三层每层 fanout
 };
 
 void log_info(const std::string &msg) {
@@ -53,6 +55,10 @@ Config parse_args(int argc, char **argv) {
             cfg.threads = std::stoull(next());
         } else if (arg == "--no-tree") {
             cfg.create_tree = false;
+        } else if (arg == "--skip-lab1") {
+            cfg.skip_lab1 = true;
+        } else if (arg == "--fanout") {
+            cfg.fanout = std::stoi(next());
         } else {
             throw std::runtime_error("unknown argument: " + arg);
         }
@@ -134,7 +140,7 @@ void create_lab1_all_files(const Config &cfg) {
 
 // 多线程创建 tree 目录三层结构中的文件
 void create_uniform_tree_and_distribute(const Config &cfg) {
-    constexpr int FANOUT = 100;
+    int FANOUT = cfg.fanout;
     std::string base = cfg.mount_point + "/tree";
     fs::create_directories(base);
 
@@ -238,8 +244,13 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        create_lab1_all_files(cfg);
+        if (!cfg.skip_lab1) {
+            create_lab1_all_files(cfg);
+        } else {
+            log_info("跳过 lab1 文件生成 (--skip-lab1)");
+        }
         if (cfg.create_tree) {
+            log_info("开始 tree 生成 (fanout=" + std::to_string(cfg.fanout) + ")...");
             create_uniform_tree_and_distribute(cfg);
         }
 
