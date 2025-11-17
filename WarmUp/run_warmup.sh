@@ -10,4 +10,4 @@ if [ -z "$CONFIG_PATH" ]; then
 fi
 
 # 运行 warmup
-./execs/warmup --config "$CONFIG_PATH"
+/home/zqf/Hulu-Retriever/WarmUp/execs/warmup --config "$CONFIG_PATH"
