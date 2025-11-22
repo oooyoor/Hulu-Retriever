@@ -4,6 +4,7 @@ project(Warmup)
 
 # 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_library(PTHREAD pthread)
 find_library(URING uring)
@@ -13,8 +14,13 @@ message (STATUS "URING: ${URING}")
 set(THIRD_PARTY_DIR ../external)
 set(INCLUDE_DIR ../include)
 include_directories(${THIRD_PARTY_DIR} ${INCLUDE_DIR} ${THIRD_PARTY_DIR}/hnswlib ${THIRD_PARTY_DIR}/spdlog/include)
-include_directories(${LIBURING}/src/include)
-message(STATUS "${LIBURING}/src/include")
+
+# 如果从源码编译 liburing，可以通过环境变量 LIBURING 指定路径
+# 系统安装的 liburing 头文件在 /usr/include，编译器会自动找到，无需额外配置
+if(DEFINED ENV{LIBURING})
+    include_directories($ENV{LIBURING}/src/include)
+    message(STATUS "Using LIBURING from environment: $ENV{LIBURING}/src/include")
+endif()
 
 set(SRC    
     ./warmup.cpp

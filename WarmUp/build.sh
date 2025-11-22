@@ -13,7 +13,7 @@ cd build
 # 编译配置
 cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Ofast -march=native" ..
 make -j$(nproc)
-
+cp compile_commands.json ../compile_commands.json
 cd ..
 
 # 确保 execs 文件夹存在
