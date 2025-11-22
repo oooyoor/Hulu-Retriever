@@ -106,6 +106,8 @@ int main(int argc, char *argv[])
         cfg.logger->warn("max_elements < query_cnt, set query_cnt to max_elements: {}", max_elements);
         pc.query_cnt = max_elements;
     }
+    // 更新局部变量 query_cnt，确保与调整后的 pc.query_cnt 一致
+    query_cnt = pc.query_cnt;
     // std::vector<std::vector<double>> costs(3, std::vector<double>(pc.query_cnt - 1, 0));
     std::vector<std::vector<double>> costs(3, std::vector<double>(pc.query_cnt, 0));
     std::vector<std::vector<double>> recalls(1, std::vector<double>(pc.query_cnt, 0));

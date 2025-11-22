@@ -14,6 +14,11 @@ cd build
 cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Ofast -march=native" ..
 make -j$(nproc)
 cp compile_commands.json ../compile_commands.json
+# 修复 compile_commands.json 中的 directory 路径，使其指向当前目录而不是 build
+sed -i "s|\"directory\": \"$(pwd)\"|\"directory\": \"$(cd .. && pwd)\"|g" ../compile_commands.json
+# 修复 include 路径，将相对路径改为绝对路径
+sed -i "s|WarmUp/\.\./external|/home/zqf/Hulu-Retriever/external|g" ../compile_commands.json
+sed -i "s|WarmUp/\.\./include|/home/zqf/Hulu-Retriever/include|g" ../compile_commands.json
 cd ..
 
 # 确保 execs 文件夹存在

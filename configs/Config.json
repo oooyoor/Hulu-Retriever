@@ -26,7 +26,8 @@
             "M": 16,
             "ef_construction": 200,
             "num_threads": 32,
-            "search_ef": 300        
+            "search_ef": 300,
+            "num_queries": 10000
         },
         {
             "dataset_name": "deep",
@@ -36,7 +37,8 @@
             "M": 16,
             "ef_construction": 200,
             "num_threads": 32,
-            "search_ef": 400
+            "search_ef": 400,
+            "num_queries": 10000
         },
         {
             "dataset_name": "gist",
@@ -46,7 +48,8 @@
             "M": 32,
             "ef_construction": 200,
             "num_threads": 32,
-            "search_ef": 500
+            "search_ef": 500,
+            "num_queries": 1000
         },
         {
             "dataset_name": "glove1M",
@@ -56,7 +59,8 @@
             "M": 32,
             "ef_construction": 500,
             "num_threads": 32,
-            "search_ef": 500
+            "search_ef": 500,
+            "num_queries": 10000
         },
         {
             "dataset_name": "glove",
@@ -66,7 +70,8 @@
             "M": 16,
             "ef_construction": 500,
             "num_threads": 32,
-            "search_ef": 500
+            "search_ef": 500,
+            "num_queries": 10000
         },
         {
             "dataset_name": "mnist",
@@ -76,7 +81,8 @@
             "M": 16,
             "ef_construction": 200,
             "num_threads": 32,
-            "search_ef": 200
+            "search_ef": 200,
+            "num_queries": 10000
         },
         {
             "dataset_name": "fashion-mnist",
@@ -86,7 +92,8 @@
             "M": 16,
             "ef_construction": 200,
             "num_threads": 32,
-            "search_ef": 200
+            "search_ef": 200,
+            "num_queries": 10000
         }
     ]
 }
