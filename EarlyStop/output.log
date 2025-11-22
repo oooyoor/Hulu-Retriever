@@ -1,0 +1,117 @@
+nohup: ignoring input
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 数据集: sift | Repeat: 1
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 执行 warmup
+[2025-11-18 12:20:31.768] [global_logger] [info] Warmup Mode: starting...
+[2025-11-18 12:20:31.768] [global_logger] [debug] block=4096, disk=1000204886016
+[2025-11-18 12:20:31.804] [global_logger] [info] Warmup finished.
+[0;32m[RUN_TEST][0m 清理系统缓存
+[0;32m[RUN_TEST][0m 清理系统缓存
+[2025-11-18 12:20:34.077] [global_logger] [info] Dataset loaded: sift
+[2025-11-18 12:20:34.078] [global_logger] [info] Data path: /home/zqf/HULU-R/Data/sift-128-euclidean-unique-sampled-1M/sift_query_normalized.fvecs
+[2025-11-18 12:20:34.078] [global_logger] [info] GT directory: /home/zqf/HULU-R/Data/sift_query_to_unique_base_gt_ip
+[2025-11-18 12:20:34.078] [global_logger] [info] Index path: /home/zqf/HULU-R/Data/hnsw_indices/M16_efc200/sift.bin
+[2025-11-18 12:20:34.286] [global_logger] [info] vecs.size(): 10000
+[2025-11-18 12:20:34.286] [global_logger] [info] max_elements: 10000
+[2025-11-18 12:20:39.078] [global_logger] [debug] block=4096, disk=1000204886016
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 数据集: sift | Repeat: 2
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 执行 warmup
+[2025-11-18 12:21:28.501] [global_logger] [info] Warmup Mode: starting...
+[2025-11-18 12:21:28.501] [global_logger] [debug] block=4096, disk=1000204886016
+[2025-11-18 12:21:28.536] [global_logger] [info] Warmup finished.
+[0;32m[RUN_TEST][0m 清理系统缓存
+[0;32m[RUN_TEST][0m 清理系统缓存
+[2025-11-18 12:21:30.397] [global_logger] [info] Dataset loaded: sift
+[2025-11-18 12:21:30.398] [global_logger] [info] Data path: /home/zqf/HULU-R/Data/sift-128-euclidean-unique-sampled-1M/sift_query_normalized.fvecs
+[2025-11-18 12:21:30.398] [global_logger] [info] GT directory: /home/zqf/HULU-R/Data/sift_query_to_unique_base_gt_ip
+[2025-11-18 12:21:30.398] [global_logger] [info] Index path: /home/zqf/HULU-R/Data/hnsw_indices/M16_efc200/sift.bin
+[2025-11-18 12:21:30.579] [global_logger] [info] vecs.size(): 10000
+[2025-11-18 12:21:30.579] [global_logger] [info] max_elements: 10000
+[2025-11-18 12:21:35.530] [global_logger] [debug] block=4096, disk=1000204886016
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 数据集: sift | Repeat: 3
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 执行 warmup
+[2025-11-18 12:22:24.877] [global_logger] [info] Warmup Mode: starting...
+[2025-11-18 12:22:24.877] [global_logger] [debug] block=4096, disk=1000204886016
+[2025-11-18 12:22:24.912] [global_logger] [info] Warmup finished.
+[0;32m[RUN_TEST][0m 清理系统缓存
+[0;32m[RUN_TEST][0m 清理系统缓存
+[2025-11-18 12:22:26.455] [global_logger] [info] Dataset loaded: sift
+[2025-11-18 12:22:26.505] [global_logger] [info] Data path: /home/zqf/HULU-R/Data/sift-128-euclidean-unique-sampled-1M/sift_query_normalized.fvecs
+[2025-11-18 12:22:26.505] [global_logger] [info] GT directory: /home/zqf/HULU-R/Data/sift_query_to_unique_base_gt_ip
+[2025-11-18 12:22:26.505] [global_logger] [info] Index path: /home/zqf/HULU-R/Data/hnsw_indices/M16_efc200/sift.bin
+[2025-11-18 12:22:26.596] [global_logger] [info] vecs.size(): 10000
+[2025-11-18 12:22:26.596] [global_logger] [info] max_elements: 10000
+[2025-11-18 12:22:30.718] [global_logger] [debug] block=4096, disk=1000204886016
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 数据集: deep | Repeat: 1
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 执行 warmup
+[2025-11-18 12:23:24.787] [global_logger] [info] Warmup Mode: starting...
+[2025-11-18 12:23:24.787] [global_logger] [debug] block=4096, disk=1000204886016
+[2025-11-18 12:23:24.820] [global_logger] [info] Warmup finished.
+[0;32m[RUN_TEST][0m 清理系统缓存
+[0;32m[RUN_TEST][0m 清理系统缓存
+[2025-11-18 12:23:26.439] [global_logger] [info] Dataset loaded: deep
+[2025-11-18 12:23:26.456] [global_logger] [info] Data path: /home/zqf/HULU-R/Data/deep-image-96-angular-unique-sampled-1M/deep_query_normalized.fvecs
+[2025-11-18 12:23:26.456] [global_logger] [info] GT directory: /home/zqf/HULU-R/Data/deep_query_to_unique_base_gt_ip
+[2025-11-18 12:23:26.456] [global_logger] [info] Index path: /home/zqf/HULU-R/Data/hnsw_indices/M16_efc200/deep.bin
+[2025-11-18 12:23:26.547] [global_logger] [info] vecs.size(): 10000
+[2025-11-18 12:23:26.547] [global_logger] [info] max_elements: 10000
+[2025-11-18 12:23:30.570] [global_logger] [debug] block=4096, disk=1000204886016
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 数据集: deep | Repeat: 2
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 执行 warmup
+[2025-11-18 12:24:28.663] [global_logger] [info] Warmup Mode: starting...
+[2025-11-18 12:24:28.663] [global_logger] [debug] block=4096, disk=1000204886016
+[2025-11-18 12:24:28.699] [global_logger] [info] Warmup finished.
+[0;32m[RUN_TEST][0m 清理系统缓存
+[0;32m[RUN_TEST][0m 清理系统缓存
+[2025-11-18 12:24:30.100] [global_logger] [info] Dataset loaded: deep
+[2025-11-18 12:24:30.100] [global_logger] [info] Data path: /home/zqf/HULU-R/Data/deep-image-96-angular-unique-sampled-1M/deep_query_normalized.fvecs
+[2025-11-18 12:24:30.100] [global_logger] [info] GT directory: /home/zqf/HULU-R/Data/deep_query_to_unique_base_gt_ip
+[2025-11-18 12:24:30.100] [global_logger] [info] Index path: /home/zqf/HULU-R/Data/hnsw_indices/M16_efc200/deep.bin
+[2025-11-18 12:24:30.165] [global_logger] [info] vecs.size(): 10000
+[2025-11-18 12:24:30.165] [global_logger] [info] max_elements: 10000
+[2025-11-18 12:24:34.207] [global_logger] [debug] block=4096, disk=1000204886016
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 数据集: deep | Repeat: 3
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 执行 warmup
+[2025-11-18 12:25:33.265] [global_logger] [info] Warmup Mode: starting...
+[2025-11-18 12:25:33.265] [global_logger] [debug] block=4096, disk=1000204886016
+[2025-11-18 12:25:33.303] [global_logger] [info] Warmup finished.
+[0;32m[RUN_TEST][0m 清理系统缓存
+[0;32m[RUN_TEST][0m 清理系统缓存
+[2025-11-18 12:25:34.701] [global_logger] [info] Dataset loaded: deep
+[2025-11-18 12:25:34.751] [global_logger] [info] Data path: /home/zqf/HULU-R/Data/deep-image-96-angular-unique-sampled-1M/deep_query_normalized.fvecs
+[2025-11-18 12:25:34.751] [global_logger] [info] GT directory: /home/zqf/HULU-R/Data/deep_query_to_unique_base_gt_ip
+[2025-11-18 12:25:34.751] [global_logger] [info] Index path: /home/zqf/HULU-R/Data/hnsw_indices/M16_efc200/deep.bin
+[2025-11-18 12:25:34.825] [global_logger] [info] vecs.size(): 10000
+[2025-11-18 12:25:34.825] [global_logger] [info] max_elements: 10000
+[2025-11-18 12:25:38.880] [global_logger] [debug] block=4096, disk=1000204886016
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 数据集: gist | Repeat: 1
+[0;32m[RUN_TEST][0m =====================================
+[0;32m[RUN_TEST][0m 执行 warmup
+[2025-11-18 12:26:34.258] [global_logger] [info] Warmup Mode: starting...
+[2025-11-18 12:26:34.258] [global_logger] [debug] block=4096, disk=1000204886016
+[2025-11-18 12:26:34.297] [global_logger] [info] Warmup finished.
+[0;32m[RUN_TEST][0m 清理系统缓存
+[0;32m[RUN_TEST][0m 清理系统缓存
+[2025-11-18 12:26:36.052] [global_logger] [info] Dataset loaded: gist
+[2025-11-18 12:26:36.069] [global_logger] [info] Data path: /home/zqf/HULU-R/Data/gist-960-euclidean-unique-sampled-1M/gist_query_normalized.fvecs
+[2025-11-18 12:26:36.069] [global_logger] [info] GT directory: /home/zqf/HULU-R/Data/gist_query_to_unique_base_gt_ip
+[2025-11-18 12:26:36.069] [global_logger] [info] Index path: /home/zqf/HULU-R/Data/hnsw_indices/M32_efc200/gist.bin
+[2025-11-18 12:26:36.141] [global_logger] [info] vecs.size(): 1000
+[2025-11-18 12:26:36.141] [global_logger] [info] max_elements: 1000
+[2025-11-18 12:27:01.669] [global_logger] [warning] max_elements < query_cnt, set query_cnt to max_elements: 1000
+[2025-11-18 12:27:01.669] [global_logger] [debug] block=4096, disk=1000204886016
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  Query ID out of range
+./run_test.sh: line 65: 466914 Aborted                 (core dumped) "${EXEC_DIR}/${EXEC_NAME}" "$CONFIG_PATH" "$DATASET_NAME" "$i"

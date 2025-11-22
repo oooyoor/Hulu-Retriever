@@ -1,0 +1,8 @@
+[2025-11-19 16:59:56.489] [global_logger] [info] Dataset loaded: fashion-mnist
+[2025-11-19 16:59:56.512] [global_logger] [info] Data path: /home/zqf/HULU-R/Data/fashion-mnist-784-euclidean-unique-sampled-1M/fashion_mnist_query_normalized.fvecs
+[2025-11-19 16:59:56.512] [global_logger] [info] GT directory: /home/zqf/HULU-R/Data/fashion-mnist_query_to_unique_base_gt_ip
+[2025-11-19 16:59:56.512] [global_logger] [info] Index path: /home/zqf/HULU-R/Data/hnsw_indices/M16_efc200/fashion-mnist.bin
+[2025-11-19 16:59:56.703] [global_logger] [info] vecs.size(): 10000
+[2025-11-19 16:59:56.703] [global_logger] [info] max_elements: 10000
+[2025-11-19 16:59:57.679] [global_logger] [debug] block=4096, disk=1000204886016
+[2025-11-19 17:00:55.665] [global_logger] [info] hnswio iter_dist_counts json path: ./recall_results/raw_results/Offset_results/fashion-mnist/1_200_256/10000/1/HNSWIO_IterDistCount.json

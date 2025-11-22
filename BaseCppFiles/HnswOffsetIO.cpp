@@ -190,8 +190,10 @@ int main(int argc, char *argv[])
         +std::to_string(pc.dataset.search_ef)+"_"+std::to_string(pc.io_depths)+"/"+std::to_string(query_cnt)+"/"+std::to_string(repeat_id);
     if (!std::filesystem::exists(out_dir)) std::filesystem::create_directories(out_dir);
     generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt, out_dir + "/HNSWIO.json");
+    cfg.logger->info("hnswio cost json path: {}", out_dir + "/HNSWIO.json");
     // generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt-1, out_dir + "/HNSWIO.json");
     generate_json_multi_T<double>(recalls, {"recall"}, query_cnt, out_dir + "/HNSWIO_Recall.json");
+    cfg.logger->info("hnswio recall json path: {}", out_dir + "/HNSWIO_Recall.json");
     // hulu::generate_json_multi_T<double>(iocnts, {"avg_iocnt"}, query_cnt, out_dir + "/HNSWIO_IOCnt" + mode_suffix + ".json");
 
     vecs.clear();

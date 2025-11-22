@@ -23,7 +23,7 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
     num_threads = js.value("num_threads", 1);
     parallel_mode = js.value("parallel_mode", 2);
     query_or_base = js.value("query_or_base", "query");
-
+    dist_limit=js.value("dist_limit",0.3);
     // 选用 dataset_name
     std::string dataset_name = dataset_name_arg;
     if (dataset_name.empty()) {
@@ -54,7 +54,8 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
     dataset.M = dcfg.value("M", 16);
     dataset.ef_construction = dcfg.value("ef_construction", 200);
     dataset.search_ef = dcfg.value("search_ef", 500);
-
+    dataset.stable_hops = dcfg.value("stable_hops", 5);
+    dataset.hop_diff_limit = dcfg.value("hop_diff_limit", 3);
     // 自动拼接路径
     dataset.data_path =
         (query_or_base == "query")

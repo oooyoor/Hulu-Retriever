@@ -1,0 +1,8 @@
+[2025-11-19 15:17:03.439] [global_logger] [info] Overriding num_threads from command line: 1
+[2025-11-19 15:17:03.439] [global_logger] [info] Dataset loaded: sift
+[2025-11-19 15:17:03.439] [global_logger] [info] Data path: /home/zqf/HULU-R/Data/sift-128-euclidean-unique-sampled-1M/sift_query_normalized.fvecs
+[2025-11-19 15:17:03.439] [global_logger] [info] GT directory: /home/zqf/HULU-R/Data/sift_query_to_unique_base_gt_ip
+[2025-11-19 15:17:03.439] [global_logger] [info] Index path: /home/zqf/HULU-R/Data/hnsw_indices/M16_efc200/sift.bin
+[2025-11-19 15:17:03.452] [global_logger] [info] vecs.size(): 10000
+[2025-11-19 15:17:03.452] [global_logger] [info] max_elements: 10000
+[2025-11-19 15:17:04.330] [global_logger] [debug] block=4096, disk=1000204886016
