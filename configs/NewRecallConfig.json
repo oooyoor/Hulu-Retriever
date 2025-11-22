@@ -27,7 +27,7 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 300,
+      "search_ef": 180,
       "stable_hops":20,
       "hop_diff_limit":2,
       "break_percent":0.3
@@ -40,7 +40,7 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 400,
+      "search_ef": 250,
       "stable_hops":20,
       "hop_diff_limit":2,
       "break_percent":0.3
@@ -53,7 +53,7 @@
       "M": 32,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 500,
+      "search_ef": 350,
       "stable_hops":30,
       "hop_diff_limit":2,
       "break_percent":0.4
@@ -66,7 +66,7 @@
       "M": 32,
       "ef_construction": 500,
       "num_threads": 32,
-      "search_ef": 500,
+      "search_ef": 450,
       "stable_hops":40,
       "hop_diff_limit":2,
       "break_percent":0.4
@@ -79,7 +79,7 @@
       "M": 16,
       "ef_construction": 500,
       "num_threads": 32,
-      "search_ef": 500,
+      "search_ef": 450,
       "stable_hops":40,
       "hop_diff_limit":2,
       "break_percent":0.4
@@ -92,7 +92,7 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 200,
+      "search_ef": 150,
       "stable_hops":8,
       "hop_diff_limit":2,
       "break_percent":0.1
@@ -105,7 +105,7 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 200,
+      "search_ef": 150,
       "stable_hops":8,
       "hop_diff_limit":2,
       "break_percent":0.1

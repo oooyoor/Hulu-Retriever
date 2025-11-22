@@ -2,6 +2,7 @@
 #include <fstream>
 #include <string>
 #include <json.hpp>
+#include "global_config.hpp"
 
 using json = nlohmann::json;
 
@@ -50,7 +51,7 @@ void generate_json_multi_T(const std::vector<std::vector<T>> &costs,
     nlohmann::json data = {
         {"avgcost", avgcostjson},
         {"entries", entries}};
-    // std::cout << output_path << std::endl;
+    GlobalConfig::instance().logger->info("avgcost: {}", avgcostjson.dump());
     std::ofstream fout(output_path);
     fout << data.dump(4);
     fout.close();
