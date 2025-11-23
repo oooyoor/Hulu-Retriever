@@ -27,7 +27,7 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 300,
+      "search_ef": 350,
       "stable_hops":20,
       "hop_diff_limit":2,
       "break_percent":0.3
@@ -92,7 +92,7 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 200,
+      "search_ef": 100,
       "stable_hops":8,
       "hop_diff_limit":2,
       "break_percent":0.1
@@ -105,7 +105,7 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 200,
+      "search_ef": 150,
       "stable_hops":8,
       "hop_diff_limit":2,
       "break_percent":0.1
