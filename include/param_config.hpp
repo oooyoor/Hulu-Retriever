@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <limits>
 #include <json.hpp>
 
 struct DatasetInfo {
@@ -10,9 +11,19 @@ struct DatasetInfo {
     int M;
     int ef_construction;
     int search_ef;
-    int stable_hops;
-    int hop_diff_limit;
-    float break_percent;
+    int hop_diff_limit = std::numeric_limits<int>::max();
+    int stable_hops = std::numeric_limits<int>::max();
+    float break_percent = 0.0f;
+
+    // 状态机参数（可选，如果未配置则使用默认值）
+    float easy_stable_hops_multiplier = 0.5f;
+    float easy_break_percent_multiplier = 1.5f;
+    float hard_stable_hops_multiplier = 3.0f;
+    float hard_break_percent_multiplier = 0.5f;
+    int easy_to_hard_threshold = 3;
+    int recent_hops_window = 10;
+    int large_jump_threshold = 2;
+
     // 自动生成的路径
     std::string data_path;
     std::string gt_directory;

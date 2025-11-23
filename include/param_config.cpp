@@ -54,9 +54,28 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
     dataset.M = dcfg.value("M", 16);
     dataset.ef_construction = dcfg.value("ef_construction", 200);
     dataset.search_ef = dcfg.value("search_ef", 500);
-    dataset.stable_hops = dcfg.value("stable_hops", 5);
-    dataset.hop_diff_limit = dcfg.value("hop_diff_limit", 3);
-    dataset.break_percent = dcfg.value("break_percent", 0.1);
+    dataset.hop_diff_limit = dcfg.value(
+        "hop_diff_limit",
+        js.value("hop_diff_limit", std::numeric_limits<int>::max()));
+    dataset.stable_hops = dcfg.value(
+        "stable_hops",
+        js.value("stable_hops", std::numeric_limits<int>::max()));
+    dataset.break_percent = dcfg.contains("break_percent")
+        ? static_cast<float>(dcfg.value("break_percent", 0.0))
+        : static_cast<float>(js.value("break_percent", 0.0));
+
+    // 读取状态机参数（如果存在 state_machine 配置）
+    if (dcfg.contains("state_machine")) {
+        const json& sm_cfg = dcfg["state_machine"];
+        dataset.easy_stable_hops_multiplier = sm_cfg.value("easy_stable_hops_multiplier", 0.5f);
+        dataset.easy_break_percent_multiplier = sm_cfg.value("easy_break_percent_multiplier", 1.5f);
+        dataset.hard_stable_hops_multiplier = sm_cfg.value("hard_stable_hops_multiplier", 3.0f);
+        dataset.hard_break_percent_multiplier = sm_cfg.value("hard_break_percent_multiplier", 0.5f);
+        dataset.easy_to_hard_threshold = sm_cfg.value("easy_to_hard_threshold", 3);
+        dataset.recent_hops_window = sm_cfg.value("recent_hops_window", 10);
+        dataset.large_jump_threshold = sm_cfg.value("large_jump_threshold", 2);
+    }
+
     // 自动拼接路径
     dataset.data_path =
         (query_or_base == "query")
@@ -72,6 +91,7 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
         "M" + std::to_string(dataset.M) +
         "_efc" + std::to_string(dataset.ef_construction) +
         "/" + dataset_name + ".bin";
+
 }
 
 void ParamConfig::load_from_json_global(const json& js) {

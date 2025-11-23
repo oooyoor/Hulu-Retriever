@@ -4,6 +4,7 @@
 #include <hnswlib/hnswlib.h>
 #include <string>
 #include <filesystem>
+#include <algorithm>
 #include "param_config.hpp"
 #include "process_json.hpp"
 #include "logger_init.hpp"
@@ -148,7 +149,7 @@ int main(int argc, char *argv[])
     //     cpu_profiler.start();
         int iter_count=0;
         int dist_count=0;
-        auto hnsw_result = alg_hnsw->searchKnn((void*)(vecs[row].data()), cur_k);
+        auto hnsw_result = alg_hnsw->searchKnnEarly((void*)(vecs[row].data()), cur_k,pc.dataset.hop_diff_limit,pc.dataset.stable_hops,pc.dataset.break_percent,dist_count,iter_count);
     //     cpu_profiler.stop();
         auto hnswed = std::chrono::high_resolution_clock::now();
         auto hnswcst = std::chrono::duration_cast<std::chrono::microseconds>(hnswed - hnswst).count();
@@ -193,13 +194,67 @@ int main(int argc, char *argv[])
     auto allcst = std::chrono::duration_cast<std::chrono::microseconds>(allend - allstart).count();
 
     // 输出 JSON / CSV
-    std::string out_dir = "./end_results/"+pc.raw_or_basefs+"_results/Offset_results/" + dataset_name + "/" + std::to_string(num_threads)+"_"
+    std::string out_dir = "/home/zqf/Hulu-Retriever/SearchDifficultyResults/Hook_results/" + dataset_name + "/" + std::to_string(num_threads)+"_"
         +std::to_string(pc.dataset.search_ef)+"_"+std::to_string(pc.io_depths)+"/"+std::to_string(query_cnt)+"/"+std::to_string(repeat_id);
     if (!std::filesystem::exists(out_dir)) std::filesystem::create_directories(out_dir);
+    std::string base_out_dir ="/home/zqf/Hulu-Retriever/SearchDifficultyResults/BaselineResults/" + dataset_name + "/" + std::to_string(num_threads)+"_"
+        +std::to_string(pc.dataset.search_ef)+"_"+std::to_string(pc.io_depths)+"/"+std::to_string(query_cnt)+"/"+std::to_string(repeat_id);
+    std::string base_iter_path = base_out_dir + "/HNSWIO_IterDistCount.json";
+    std::string base_recall_path = base_out_dir + "/HNSWIO_Recall.json";
     generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt, out_dir + "/HNSWIO.json");
     // generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt-1, out_dir + "/HNSWIO.json");
     generate_json_multi_T<double>(recalls, {"recall"}, query_cnt, out_dir + "/HNSWIO_Recall.json");
-    // hulu::generate_json_multi_T<double>(iocnts, {"avg_iocnt"}, query_cnt, out_dir + "/HNSWIO_IOCnt" + mode_suffix + ".json");
+    generate_json_multi_T<double>(iter_dist_counts, {"iter_count","dist_count"}, query_cnt, out_dir + "/HNSWIO_IterDistCount.json");
+
+    // =============================
+    // 读取 Baseline 结果，计算对比指标
+    // =============================
+    try {
+        auto base_iter_json = read_json(base_iter_path);
+        auto base_recall_json = read_json(base_recall_path);
+
+        const auto &base_iter_entries = base_iter_json["entries"];
+        const auto &base_recall_entries = base_recall_json["entries"];
+
+        size_t base_cnt = std::min(base_iter_entries.size(), base_recall_entries.size());
+        size_t valid_cnt = std::min(base_cnt, static_cast<size_t>(query_cnt));
+
+        std::vector<std::vector<double>> delta_and_speedups(
+            3, std::vector<double>(valid_cnt, 0.0));
+
+        for (size_t i = 0; i < valid_cnt; ++i) {
+            double recall_early = recalls[0][i];
+            double recall_base = base_recall_entries[i].value("recall", 0.0);
+
+            double iter_early = iter_dist_counts[0][i];
+            double dist_early = iter_dist_counts[1][i];
+
+            double iter_base = base_iter_entries[i].value("iter_count", 0.0);
+            double dist_base = base_iter_entries[i].value("dist_count", 0.0);
+
+            double safe_iter_early = std::max(1.0, iter_early);
+            double safe_dist_early = std::max(1.0, dist_early);
+
+            // Δrecall[i] = recall_early[i] - recall_base[i]
+            delta_and_speedups[0][i] = recall_early - recall_base;
+            // speedup_iter = iter_base[i] / max(1, iter_early[i])
+            delta_and_speedups[1][i] = iter_base / safe_iter_early;
+            // speedup_dist = dist_base[i] / max(1, dist_early[i])
+            delta_and_speedups[2][i] = dist_base / safe_dist_early;
+        }
+
+        if (valid_cnt > 0) {
+            generate_json_multi_T<double>(
+                delta_and_speedups,
+                {"delta_recall", "speedup_iter", "speedup_dist"},
+                static_cast<int>(valid_cnt),
+                out_dir + "/HNSWIO_vsBaseline.json");
+        } else {
+            cfg.logger->warn("No valid baseline entries found for comparison.");
+        }
+    } catch (const std::exception &e) {
+        cfg.logger->error("Failed to compute baseline comparison: {}", e.what());
+    }
 
     vecs.clear();
     // for (auto ioer : ioers) delete ioer;
