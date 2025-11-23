@@ -6,7 +6,7 @@ NUM_THREADS=${2:-}
 
 WORKSPACE_ROOT="/home/zqf/Hulu-Retriever"
 CONFIG_PATH="${WORKSPACE_ROOT}/configs/Config.json"
-EXEC_DIR="${WORKSPACE_ROOT}/MakeFsWorkSpace/execs"
+EXEC_DIR="./execs"
 WARMUP_SCRIPT="${WORKSPACE_ROOT}/WarmUp/run_warmup.sh"
 WARMUP_BIN="${WORKSPACE_ROOT}/WarmUp/execs/warmup"
 

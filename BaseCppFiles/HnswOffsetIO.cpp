@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
     // std::vector<std::vector<double>> costs(3, std::vector<double>(pc.query_cnt - 1, 0));
     std::vector<std::vector<double>> costs(3, std::vector<double>(pc.query_cnt, 0));
     std::vector<std::vector<double>> recalls(1, std::vector<double>(pc.query_cnt, 0));
-    std::vector<std::vector<double>> iocnts(1, std::vector<double>(pc.query_cnt, 0));
+    std::vector<std::vector<double>> iter_dist_counts(2, std::vector<double>(pc.query_cnt, 0));
     auto block_res = get_block_size(pc.dev_path, pc.iovec_ext_number);
     std::vector<IOuringManager*> ioers;
     for (int i = 0; i < num_threads; i++) ioers.push_back(new IOuringManager(pc.io_depths, {pc.dev_path}, std::get<1>(block_res)));
@@ -139,11 +139,16 @@ int main(int argc, char *argv[])
     parallel_executor([&](size_t row, size_t threadId) {
         auto gt_top_k_indices = gt_reader.getTopKResults(row);
         int cur_k = std::min(static_cast<int>(gt_top_k_indices.size()), pc.topk);
-
+        std::set<hnswlib::labeltype> gtset;
+        for(int i=0;i<cur_k;i++){
+            gtset.insert(gt_top_k_indices[i]);
+        }
     //     CPUProfiler cpu_profiler;
         auto hnswst = std::chrono::high_resolution_clock::now();
     //     cpu_profiler.start();
-        auto hnsw_result = alg_hnsw->searchKnn((void*)(vecs[row].data()), cur_k);
+        int iter_count=0;
+        int dist_count=0;
+        auto hnsw_result = alg_hnsw->searchKnnUntilAllGroundTruthFound((void*)(vecs[row].data()), cur_k,gtset,iter_count,dist_count);
     //     cpu_profiler.stop();
         auto hnswed = std::chrono::high_resolution_clock::now();
         auto hnswcst = std::chrono::duration_cast<std::chrono::microseconds>(hnswed - hnswst).count();
@@ -155,6 +160,8 @@ int main(int argc, char *argv[])
             offset_list.emplace_back(tmp<<cfg.OFF_BITS_LEN);
         }
         recalls[0][row] = get_recall<ull, int64_t>(indexs, gt_top_k_indices, cur_k);
+        iter_dist_counts[0][row]=iter_count;
+        iter_dist_counts[1][row]=dist_count;
         TimePoint io_start, io_end;
         auto iost = std::chrono::high_resolution_clock::now();
         ioers[threadId]->batch_read_offset(offset_list);

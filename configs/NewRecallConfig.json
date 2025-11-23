@@ -1,7 +1,7 @@
 {
   "dev_path": "/dev/nvme0n1",
   "raw_or_basefs": "raw",
-  "dist_limit":0.2,
+  
   "fs_data_dir_path": "/mnt/nvme0n1/tree",
   "hd5f_file_root_dir": "/home/zqf/Data/HDF5_Files/",
   "fvecs_gt_root_dir": "/home/zqf/HULU-R/Data/",
@@ -27,10 +27,9 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 180,
-      "stable_hops":20,
-      "hop_diff_limit":2,
-      "break_percent":0.3
+      "search_ef": 185,
+      "stable_hops":13,
+      "hop_diff_limit":2
     },
     {
       "dataset_name": "deep",
@@ -40,10 +39,9 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 250,
-      "stable_hops":20,
-      "hop_diff_limit":2,
-      "break_percent":0.3
+      "search_ef": 300,
+      "stable_hops":15,
+      "hop_diff_limit":2
     },
     {
       "dataset_name": "gist",
@@ -53,10 +51,9 @@
       "M": 32,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 350,
-      "stable_hops":30,
-      "hop_diff_limit":2,
-      "break_percent":0.4
+      "search_ef": 500,
+      "stable_hops":15,
+      "hop_diff_limit":2
     },
     {
       "dataset_name": "glove1M",
@@ -67,9 +64,8 @@
       "ef_construction": 500,
       "num_threads": 32,
       "search_ef": 450,
-      "stable_hops":40,
-      "hop_diff_limit":2,
-      "break_percent":0.4
+      "stable_hops":15,
+      "hop_diff_limit":2
     },
     {
       "dataset_name": "glove",
@@ -80,9 +76,8 @@
       "ef_construction": 500,
       "num_threads": 32,
       "search_ef": 450,
-      "stable_hops":40,
-      "hop_diff_limit":2,
-      "break_percent":0.4
+      "stable_hops":15,
+      "hop_diff_limit":2
     },
     {
       "dataset_name": "mnist",
@@ -92,10 +87,9 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 150,
-      "stable_hops":8,
-      "hop_diff_limit":2,
-      "break_percent":0.1
+      "search_ef": 100,
+      "stable_hops":1,
+      "hop_diff_limit":3
     },
     {
       "dataset_name": "fashion-mnist",
@@ -105,10 +99,9 @@
       "M": 16,
       "ef_construction": 200,
       "num_threads": 32,
-      "search_ef": 150,
-      "stable_hops":8,
-      "hop_diff_limit":2,
-      "break_percent":0.1
+      "search_ef": 100,
+      "stable_hops":1,
+      "hop_diff_limit":3
     }
   ]
 }

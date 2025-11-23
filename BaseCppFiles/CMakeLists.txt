@@ -12,18 +12,11 @@ message (STATUS "URING: ${URING}")
 set(THIRD_PARTY_DIR ../external)
 set(INCLUDE_DIR ../include)
 include_directories(${THIRD_PARTY_DIR} ${INCLUDE_DIR} ${THIRD_PARTY_DIR}/hnswlib ${THIRD_PARTY_DIR}/spdlog/include)
-
-# 如果从源码编译 liburing，可以通过环境变量 LIBURING 指定路径
-# 系统安装的 liburing 头文件在 /usr/include，编译器会自动找到，无需额外配置
-if(DEFINED ENV{LIBURING})
-    include_directories($ENV{LIBURING}/src/include)
-    message(STATUS "Using LIBURING from environment: $ENV{LIBURING}/src/include")
-endif()
+include_directories(${LIBURING}/src/include)
+message(STATUS "${LIBURING}/src/include")
 
 set(SRC    
-    ./HnswFsIO.cpp
-    # ./HnswOffsetIO.cpp
-    # ./HnswMultiLayerFsIO.cpp
+    ./HnswOffsetIO.cpp
     ${INCLUDE_DIR}/param_config.cpp
 )
 
