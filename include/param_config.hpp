@@ -10,9 +10,7 @@ struct DatasetInfo {
     int M;
     int ef_construction;
     int search_ef;
-    int stable_hops;
-    int hop_diff_limit;
-    float break_percent;
+
     // 自动生成的路径
     std::string data_path;
     std::string gt_directory;

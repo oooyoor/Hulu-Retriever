@@ -54,9 +54,7 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
     dataset.M = dcfg.value("M", 16);
     dataset.ef_construction = dcfg.value("ef_construction", 200);
     dataset.search_ef = dcfg.value("search_ef", 500);
-    dataset.stable_hops = dcfg.value("stable_hops", 5);
-    dataset.hop_diff_limit = dcfg.value("hop_diff_limit", 3);
-    dataset.break_percent = dcfg.value("break_percent", 0.1);
+
     // 自动拼接路径
     dataset.data_path =
         (query_or_base == "query")

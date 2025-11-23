@@ -18,7 +18,6 @@ execs/
 **/end_results/
 **/results/
 **/logs/
-**/recall_results/
 
 # Output files (but keep config files in configs/)
 *.csv
@@ -28,12 +27,10 @@ execs/
 # JSON files in results directories only (keep configs/Config.json)
 **/results/**/*.json
 **/end_results/**/*.json
-**/recall_results/**/*.json
 
 # Markdown files in results only (keep README.md at root)
 **/results/**/*.md
 **/end_results/**/*.md
-**/recall_results/**/*.md
 
 # Compiled files
 *.o
@@ -54,8 +51,4 @@ compile_commands.json
 *.log
 .DS_Store
 Thumbs.db
-
-# Backup directories
-.branch_switch_backup*/
-.rebase_backup*/
 
