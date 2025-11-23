@@ -2,7 +2,10 @@ cmake_minimum_required(VERSION 3.28)
 project(FS_COMPARE)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+<<<<<<< HEAD
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+=======
+>>>>>>> 7e6b3c1... template_make
 
 find_library(PTHREAD pthread)
 find_library(URING uring)
