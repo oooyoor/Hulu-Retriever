@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
     //     cpu_profiler.start();
         int iter_count=0;
         int dist_count=0;
-        auto hnsw_result = alg_hnsw->searchKnn((void*)(vecs[row].data()), cur_k);
+        auto hnsw_result = alg_hnsw->searchKnnEarly((void*)(vecs[row].data()), cur_k,pc.dataset.hop_diff_limit,pc.dataset.stable_hops,pc.dataset.break_percent,iter_count,dist_count);
     //     cpu_profiler.stop();
         auto hnswed = std::chrono::high_resolution_clock::now();
         auto hnswcst = std::chrono::duration_cast<std::chrono::microseconds>(hnswed - hnswst).count();
@@ -199,7 +199,7 @@ int main(int argc, char *argv[])
     generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt, out_dir + "/HNSWIO.json");
     // generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt-1, out_dir + "/HNSWIO.json");
     generate_json_multi_T<double>(recalls, {"recall"}, query_cnt, out_dir + "/HNSWIO_Recall.json");
-    // hulu::generate_json_multi_T<double>(iocnts, {"avg_iocnt"}, query_cnt, out_dir + "/HNSWIO_IOCnt" + mode_suffix + ".json");
+    generate_json_multi_T<double>(iter_dist_counts, {"iter_count","dist_count"}, query_cnt, out_dir + "/HNSWIO_IterDistCounts.json");
 
     vecs.clear();
     // for (auto ioer : ioers) delete ioer;

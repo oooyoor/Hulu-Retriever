@@ -112,6 +112,7 @@ int main(int argc, char *argv[])
     std::vector<std::vector<double>> costs(3, std::vector<double>(pc.query_cnt, 0));
     std::vector<std::vector<double>> recalls(1, std::vector<double>(pc.query_cnt, 0));
     std::vector<std::vector<double>> iter_dist_counts(2, std::vector<double>(pc.query_cnt, 0));
+    std::vector<std::vector<int>> hop_id_lists(pc.query_cnt);
     auto block_res = get_block_size(pc.dev_path, pc.iovec_ext_number);
     std::vector<IOuringManager*> ioers;
     for (int i = 0; i < num_threads; i++) ioers.push_back(new IOuringManager(pc.io_depths, {pc.dev_path}, std::get<1>(block_res)));
@@ -148,7 +149,7 @@ int main(int argc, char *argv[])
     //     cpu_profiler.start();
         int iter_count=0;
         int dist_count=0;
-        auto hnsw_result = alg_hnsw->searchKnn((void*)(vecs[row].data()), cur_k);
+        auto hnsw_result = alg_hnsw->searchKnnCnt((void*)(vecs[row].data()), cur_k,dist_count,iter_count,hop_id_lists[row]);
     //     cpu_profiler.stop();
         auto hnswed = std::chrono::high_resolution_clock::now();
         auto hnswcst = std::chrono::duration_cast<std::chrono::microseconds>(hnswed - hnswst).count();
@@ -199,7 +200,8 @@ int main(int argc, char *argv[])
     generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt, out_dir + "/HNSWIO.json");
     // generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt-1, out_dir + "/HNSWIO.json");
     generate_json_multi_T<double>(recalls, {"recall"}, query_cnt, out_dir + "/HNSWIO_Recall.json");
-    // hulu::generate_json_multi_T<double>(iocnts, {"avg_iocnt"}, query_cnt, out_dir + "/HNSWIO_IOCnt" + mode_suffix + ".json");
+    generate_json_multi_T<double>(iter_dist_counts, {"iter_count","dist_count"}, query_cnt, out_dir + "/HNSWIO_IterDistCounts.json");
+    save_hop_id_lists(hop_id_lists, out_dir + "/HNSWIO_HopIdList.json", query_cnt);
 
     vecs.clear();
     // for (auto ioer : ioers) delete ioer;
