@@ -54,9 +54,16 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
     dataset.M = dcfg.value("M", 16);
     dataset.ef_construction = dcfg.value("ef_construction", 200);
     dataset.search_ef = dcfg.value("search_ef", 500);
-    dataset.stable_hops = dcfg.value("stable_hops", 5);
-    dataset.hop_diff_limit = dcfg.value("hop_diff_limit", 3);
-    dataset.break_percent = dcfg.value("break_percent", 0.1);
+    dataset.hop_diff_limit = dcfg.value(
+        "hop_diff_limit",
+        js.value("hop_diff_limit", std::numeric_limits<int>::max()));
+    dataset.stable_hops = dcfg.value(
+        "stable_hops",
+        js.value("stable_hops", std::numeric_limits<int>::max()));
+    dataset.break_percent = dcfg.contains("break_percent")
+        ? static_cast<float>(dcfg.value("break_percent", 0.0))
+        : static_cast<float>(js.value("break_percent", 0.0));
+
     // 自动拼接路径
     dataset.data_path =
         (query_or_base == "query")
@@ -72,6 +79,7 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
         "M" + std::to_string(dataset.M) +
         "_efc" + std::to_string(dataset.ef_construction) +
         "/" + dataset_name + ".bin";
+
 }
 
 void ParamConfig::load_from_json_global(const json& js) {
