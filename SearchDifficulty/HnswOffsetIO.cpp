@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
     // std::vector<std::vector<double>> costs(3, std::vector<double>(pc.query_cnt - 1, 0));
     std::vector<std::vector<double>> costs(3, std::vector<double>(pc.query_cnt, 0));
     std::vector<std::vector<double>> recalls(1, std::vector<double>(pc.query_cnt, 0));
-    std::vector<std::vector<double>> iter_dist_counts(2, std::vector<double>(pc.query_cnt, 0));
+    std::vector<std::vector<int>> iter_dist_counts(2, std::vector<int>(pc.query_cnt, 0));
     auto block_res = get_block_size(pc.dev_path, pc.iovec_ext_number);
     std::vector<IOuringManager*> ioers;
     for (int i = 0; i < num_threads; i++) ioers.push_back(new IOuringManager(pc.io_depths, {pc.dev_path}, std::get<1>(block_res)));
@@ -139,16 +139,16 @@ int main(int argc, char *argv[])
     parallel_executor([&](size_t row, size_t threadId) {
         auto gt_top_k_indices = gt_reader.getTopKResults(row);
         int cur_k = std::min(static_cast<int>(gt_top_k_indices.size()), pc.topk);
-        std::set<hnswlib::labeltype> gtset;
-        for(int i=0;i<cur_k;i++){
-            gtset.insert(gt_top_k_indices[i]);
+        std::set<hnswlib::labeltype> gt_set;
+        for (int i=0;i<cur_k;i++) {
+            gt_set.insert(static_cast<hnswlib::labeltype>(gt_top_k_indices[i]));
         }
+        int iter_count = 0;
+        int dist_count = 0;
     //     CPUProfiler cpu_profiler;
         auto hnswst = std::chrono::high_resolution_clock::now();
     //     cpu_profiler.start();
-        int iter_count=0;
-        int dist_count=0;
-        auto hnsw_result = alg_hnsw->searchKnnUntilAllGroundTruthFound((void*)(vecs[row].data()), cur_k,gtset,iter_count,dist_count);
+        auto hnsw_result = alg_hnsw->searchKnnRecallCost((void*)(vecs[row].data()), cur_k, gt_set, iter_count, dist_count);
     //     cpu_profiler.stop();
         auto hnswed = std::chrono::high_resolution_clock::now();
         auto hnswcst = std::chrono::duration_cast<std::chrono::microseconds>(hnswed - hnswst).count();
@@ -160,8 +160,8 @@ int main(int argc, char *argv[])
             offset_list.emplace_back(tmp<<cfg.OFF_BITS_LEN);
         }
         recalls[0][row] = get_recall<ull, int64_t>(indexs, gt_top_k_indices, cur_k);
-        iter_dist_counts[0][row]=iter_count;
-        iter_dist_counts[1][row]=dist_count;
+        iter_dist_counts[0][row] = iter_count;
+        iter_dist_counts[1][row] = dist_count;
         TimePoint io_start, io_end;
         auto iost = std::chrono::high_resolution_clock::now();
         ioers[threadId]->batch_read_offset(offset_list);
@@ -193,13 +193,13 @@ int main(int argc, char *argv[])
     auto allcst = std::chrono::duration_cast<std::chrono::microseconds>(allend - allstart).count();
 
     // 输出 JSON / CSV
-    std::string out_dir = "./end_results/"+pc.raw_or_basefs+"_results/Offset_results/" + dataset_name + "/" + std::to_string(num_threads)+"_"
+    std::string out_dir = "./search_difficulty_results/"+pc.raw_or_basefs+"_results/Offset_results/" + dataset_name + "/" + std::to_string(num_threads)+"_"
         +std::to_string(pc.dataset.search_ef)+"_"+std::to_string(pc.io_depths)+"/"+std::to_string(query_cnt)+"/"+std::to_string(repeat_id);
     if (!std::filesystem::exists(out_dir)) std::filesystem::create_directories(out_dir);
     generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt, out_dir + "/HNSWIO.json");
     // generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt-1, out_dir + "/HNSWIO.json");
     generate_json_multi_T<double>(recalls, {"recall"}, query_cnt, out_dir + "/HNSWIO_Recall.json");
-    // hulu::generate_json_multi_T<double>(iocnts, {"avg_iocnt"}, query_cnt, out_dir + "/HNSWIO_IOCnt" + mode_suffix + ".json");
+    generate_json_multi_T<int>(iter_dist_counts, {"iter_count","dist_count"}, query_cnt, out_dir + "/HNSWIO_IterDistCount.json");
 
     vecs.clear();
     // for (auto ioer : ioers) delete ioer;
