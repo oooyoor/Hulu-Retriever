@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <limits>
 #include <json.hpp>
 
 struct DatasetInfo {
@@ -10,13 +11,21 @@ struct DatasetInfo {
     int M;
     int ef_construction;
     int search_ef;
-    int stable_hops;
-    int hop_diff_limit;
-    float break_percent;
+    int hop_diff_limit = std::numeric_limits<int>::max();
+    int stable_hops = std::numeric_limits<int>::max();
+    float break_percent = 0.0f;
+
     // 自动生成的路径
     std::string data_path;
     std::string gt_directory;
     std::string index_path;
+};
+
+struct EarlyStopConfig {
+    bool enabled = false;
+    size_t revisit_limit = std::numeric_limits<size_t>::max();
+    size_t extrema_limit = std::numeric_limits<size_t>::max();
+    size_t min_results = 0;
 };
 
 struct ParamConfig{
@@ -42,6 +51,7 @@ public:
     std::string query_or_base;
 
     DatasetInfo dataset;
+    EarlyStopConfig early_stop;
 public:
     static ParamConfig& instance() {
         static ParamConfig inst;

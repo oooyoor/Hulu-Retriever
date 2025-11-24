@@ -21,7 +21,7 @@ if [[ ! -x "${EXEC_DIR}/${EXEC_NAME}" ]]; then
 fi
 
 mapfile -t DATASETS < <(jq -r '.dataset_list[].dataset_name' "$CONFIG_PATH")
-REPEATS=3
+REPEATS=1
 
 log()   { echo -e "\033[0;32m[RUN_TEST]\033[0m $1"; }
 warn()  { echo -e "\033[1;33m[RUN_TEST]\033[0m $1"; }
