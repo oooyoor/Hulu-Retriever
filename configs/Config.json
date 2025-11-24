@@ -17,12 +17,6 @@
     "mocktest": true,
     "num_threads": 1,
     "parallel_mode": 2,
-    "early_stop": {
-        "enabled": true,
-        "revisit_limit": 120,
-        "extrema_limit": 60,
-        "min_results": 32
-    },
     "dataset_list": [
         {
             "dataset_name": "sift",
@@ -34,12 +28,9 @@
             "num_threads": 32,
             "search_ef": 300,
             "num_queries": 10000,
-            "early_stop": {
-                "enabled": true,
-                "revisit_limit": 150,
-                "extrema_limit": 80,
-                "min_results": 32
-            }
+            "hop_diff_limit": 2,
+            "stable_hops": 20,
+            "break_percent": 0.35
         },
         {
             "dataset_name": "deep",
@@ -51,12 +42,9 @@
             "num_threads": 32,
             "search_ef": 400,
             "num_queries": 10000,
-            "early_stop": {
-                "enabled": true,
-                "revisit_limit": 180,
-                "extrema_limit": 90,
-                "min_results": 40
-            }
+            "hop_diff_limit": 2,
+            "stable_hops": 24,
+            "break_percent": 0.2
         },
         {
             "dataset_name": "gist",
@@ -68,12 +56,9 @@
             "num_threads": 32,
             "search_ef": 500,
             "num_queries": 1000,
-            "early_stop": {
-                "enabled": true,
-                "revisit_limit": 200,
-                "extrema_limit": 110,
-                "min_results": 40
-            }
+            "hop_diff_limit": 2,
+            "stable_hops": 26,
+            "break_percent": 0.5
         },
         {
             "dataset_name": "glove1M",
@@ -85,12 +70,9 @@
             "num_threads": 32,
             "search_ef": 500,
             "num_queries": 10000,
-            "early_stop": {
-                "enabled": true,
-                "revisit_limit": 210,
-                "extrema_limit": 115,
-                "min_results": 40
-            }
+            "hop_diff_limit": 2,
+            "stable_hops": 26,
+            "break_percent": 0.4
         },
         {
             "dataset_name": "glove",
@@ -102,12 +84,9 @@
             "num_threads": 32,
             "search_ef": 500,
             "num_queries": 10000,
-            "early_stop": {
-                "enabled": true,
-                "revisit_limit": 210,
-                "extrema_limit": 115,
-                "min_results": 40
-            }
+            "hop_diff_limit": 2,
+            "stable_hops": 26,
+            "break_percent": 0.4
         },
         {
             "dataset_name": "mnist",
@@ -119,12 +98,9 @@
             "num_threads": 32,
             "search_ef": 200,
             "num_queries": 10000,
-            "early_stop": {
-                "enabled": true,
-                "revisit_limit": 80,
-                "extrema_limit": 40,
-                "min_results": 24
-            }
+            "hop_diff_limit": 2,
+            "stable_hops": 8,
+            "break_percent": 0.2
         },
         {
             "dataset_name": "fashion-mnist",
@@ -136,12 +112,9 @@
             "num_threads": 32,
             "search_ef": 200,
             "num_queries": 10000,
-            "early_stop": {
-                "enabled": true,
-                "revisit_limit": 90,
-                "extrema_limit": 45,
-                "min_results": 24
-            }
+            "hop_diff_limit": 2,
+            "stable_hops": 8,
+            "break_percent": 0.2
         }
     ]
 }

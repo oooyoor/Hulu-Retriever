@@ -2,31 +2,6 @@
 #include <stdexcept>
 
 using json = nlohmann::json;
-
-namespace {
-
-EarlyStopConfig merge_early_stop(const json* node, const EarlyStopConfig& base) {
-    EarlyStopConfig cfg = base;
-    if (node == nullptr || !node->is_object()) {
-        return cfg;
-    }
-    const json& obj = *node;
-    if (obj.contains("enabled")) {
-        cfg.enabled = obj.value("enabled", cfg.enabled);
-    }
-    if (obj.contains("revisit_limit")) {
-        cfg.revisit_limit = obj.value("revisit_limit", cfg.revisit_limit);
-    }
-    if (obj.contains("extrema_limit")) {
-        cfg.extrema_limit = obj.value("extrema_limit", cfg.extrema_limit);
-    }
-    if (obj.contains("min_results")) {
-        cfg.min_results = obj.value("min_results", cfg.min_results);
-    }
-    return cfg;
-}
-
-}
 void ParamConfig::load_from_json(const json& js, const std::string& dataset_name_arg)
 {
     // 根配置
@@ -48,7 +23,6 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
     num_threads = js.value("num_threads", 1);
     parallel_mode = js.value("parallel_mode", 2);
     query_or_base = js.value("query_or_base", "query");
-    early_stop = merge_early_stop(js.contains("early_stop") ? &js.at("early_stop") : nullptr, EarlyStopConfig{});
 
     // 选用 dataset_name
     std::string dataset_name = dataset_name_arg;
@@ -106,7 +80,6 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
         "_efc" + std::to_string(dataset.ef_construction) +
         "/" + dataset_name + ".bin";
 
-    early_stop = merge_early_stop(dcfg.contains("early_stop") ? &dcfg.at("early_stop") : nullptr, early_stop);
 }
 
 void ParamConfig::load_from_json_global(const json& js) {

@@ -21,13 +21,6 @@ struct DatasetInfo {
     std::string index_path;
 };
 
-struct EarlyStopConfig {
-    bool enabled = false;
-    size_t revisit_limit = std::numeric_limits<size_t>::max();
-    size_t extrema_limit = std::numeric_limits<size_t>::max();
-    size_t min_results = 0;
-};
-
 struct ParamConfig{
 public:
     std::string dev_path;
@@ -51,7 +44,6 @@ public:
     std::string query_or_base;
 
     DatasetInfo dataset;
-    EarlyStopConfig early_stop;
 public:
     static ParamConfig& instance() {
         static ParamConfig inst;

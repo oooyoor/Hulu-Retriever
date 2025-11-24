@@ -16,8 +16,8 @@ include_directories(${LIBURING}/src/include)
 message(STATUS "${LIBURING}/src/include")
 
 set(SRC    
-    # ./HnswOffsetIO.cpp
-    ./HopIterRecord.cpp
+    ./HnswOffsetIO.cpp
+    # ./HopIterRecord.cpp
     ${INCLUDE_DIR}/param_config.cpp
 )
 

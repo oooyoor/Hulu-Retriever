@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
     //     cpu_profiler.start();
         int iter_count=0;
         int dist_count=0;
-        auto hnsw_result = alg_hnsw->searchKnnEarly((void*)(vecs[row].data()), cur_k,pc.dataset.hop_diff_limit,pc.dataset.stable_hops,pc.dataset.break_percent,iter_count,dist_count);
+        auto hnsw_result = alg_hnsw->searchKnnEarly((void*)(vecs[row].data()), cur_k,pc.dataset.hop_diff_limit,pc.dataset.stable_hops,pc.dataset.break_percent,dist_count,iter_count);
     //     cpu_profiler.stop();
         auto hnswed = std::chrono::high_resolution_clock::now();
         auto hnswcst = std::chrono::duration_cast<std::chrono::microseconds>(hnswed - hnswst).count();
@@ -193,7 +193,7 @@ int main(int argc, char *argv[])
     auto allcst = std::chrono::duration_cast<std::chrono::microseconds>(allend - allstart).count();
 
     // 输出 JSON / CSV
-    std::string out_dir = "./end_results/"+pc.raw_or_basefs+"_results/Offset_results/" + dataset_name + "/" + std::to_string(num_threads)+"_"
+    std::string out_dir = "/home/zqf/Hulu-Retriever/Results/EarlyResults/Offset_results/" + dataset_name + "/" + std::to_string(num_threads)+"_"
         +std::to_string(pc.dataset.search_ef)+"_"+std::to_string(pc.io_depths)+"/"+std::to_string(query_cnt)+"/"+std::to_string(repeat_id);
     if (!std::filesystem::exists(out_dir)) std::filesystem::create_directories(out_dir);
     generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt, out_dir + "/HNSWIO.json");
