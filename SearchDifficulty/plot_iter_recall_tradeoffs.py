@@ -174,6 +174,132 @@ def prepare_recall_deltas(levels: List[dict], recalls: Dict[str, List[float]]) -
     return base_vs_early, early_vs_extreme
 
 
+# def plot_dual_metric(
+#     key: str,
+#     dataset: str,
+#     config: str,
+#     x_labels: List[str],
+#     iter_values: List[float],
+#     recall_deltas: List[Optional[float]],
+#     figure_title: str,
+#     iter_label: str,
+#     recall_label: str,
+#     color: str,
+#     output_dir: Path,
+#     formats: Sequence[str],
+# ) -> None:
+#     y_iter = np.array(iter_values, dtype=float) * 100.0
+#     y_recall = np.array(
+#         [np.nan if val is None else val * 100.0 for val in recall_deltas], dtype=float
+#     )
+
+#     fig, ax_iter = plt.subplots(figsize=(6.0, 3.4))
+#     ax_recall = ax_iter.twinx()
+#     fig.suptitle(f"{figure_title} • {format_title(dataset, config)}", fontsize=11, y=1.02)
+
+#     bar_positions = np.arange(len(x_labels))
+#     bars = ax_iter.bar(
+#         bar_positions,
+#         y_iter,
+#         color=color,
+#         alpha=0.85,
+#         width=0.35,
+#         label=iter_label,
+#         edgecolor="#1B4F72",
+#         linewidth=0.5,
+#     )
+#     ax_iter.axhline(0.0, color="#777777", linestyle="--", linewidth=0.9, alpha=0.6)
+#     ax_iter.set_ylabel(iter_label, color=color, fontsize=10)
+#     ax_iter.tick_params(axis="y", colors=color)
+#     ax_iter.set_xticks(bar_positions)
+#     ax_iter.set_xticklabels(x_labels, fontsize=9)
+
+#     recall_line = ax_recall.plot(
+#         bar_positions,
+#         y_recall,
+#         color="#6C5CE7",
+#         marker="D",
+#         markersize=5,
+#         linewidth=1.8,
+#         label=recall_label,
+#     )[0]
+#     ax_recall.axhline(0.0, color="#999999", linestyle=":", linewidth=0.8, alpha=0.6)
+#     ax_recall.set_ylabel(recall_label, color="#6C5CE7", fontsize=10)
+#     ax_recall.tick_params(axis="y", colors="#6C5CE7")
+
+#     for bar in bars:
+#         height = bar.get_height()
+#         if np.isnan(height):
+#             continue
+#         ax_iter.text(
+#             bar.get_x() + bar.get_width() / 2,
+#             height,
+#             f"{height:.1f}%",
+#             ha="center",
+#             va="bottom" if height >= 0 else "top",
+#             fontsize=8,
+#             color="#0B2545",
+#         )
+#     for idx, val in enumerate(y_recall):
+#         if np.isnan(val):
+#             continue
+#         ax_recall.text(
+#             bar_positions[idx],
+#             val,
+#             f"{val:.2f}pp",
+#             ha="center",
+#             va="bottom" if val >= 0 else "top",
+#             fontsize=8,
+#             color="#4A3F8C",
+#             rotation=0,
+#         )
+
+#     ax_iter.set_xlabel("Difficulty Level (SearchResults quantiles)", fontsize=10)
+#     ax_iter.grid(axis="y", linestyle=":", linewidth=0.5, alpha=0.6)
+
+#     handles = [bars, recall_line]
+#     labels = [iter_label, recall_label]
+#     ax_iter.legend(
+#         handles,
+#         labels,
+#         loc="upper left",
+#         fontsize=9,
+#         frameon=False,
+#         bbox_to_anchor=(0.0, 1.15),
+#         ncol=2,
+#         columnspacing=1.5,
+#     )
+#     fig.tight_layout()
+
+#     output_dir.mkdir(parents=True, exist_ok=True)
+#     saved_paths = []
+#     for fmt in formats:
+#         out_path = output_dir / f"{key}.{fmt}"
+#         fig.savefig(out_path, format=fmt, dpi=300, bbox_inches="tight")
+#         saved_paths.append(out_path)
+#     plt.close(fig)
+#     for path in saved_paths:
+#         print(f"[OK] Saved plot: {path}")
+
+def compute_optimal_figsize(num_buckets: int) -> tuple:
+    """
+    自动计算最佳图像尺寸，使得无论 bucket 个数多少、注释多少，都不会重叠。
+    """
+    # 每个 bucket 分配宽度（经验值）
+    per_bucket_width = 0.9  # 每个柱子大约需要 0.9 inch 才不会挤
+    base_width = 2.8        # 图像基础宽度
+
+    width = base_width + num_buckets * per_bucket_width
+
+    # 高度可以根据是否有 recall 双轴动态调节
+    height = 2.8  # 学术图默认比较扁平，2.6~3.0 都很合理
+
+    # 限制最大宽度，避免横向太夸张
+    width = min(width, 6.8)  # 单栏 3.3、双栏 6.9，这里留一点 margin
+
+    return (width, height)
+
+
 def plot_dual_metric(
     key: str,
     dataset: str,
@@ -187,43 +313,139 @@ def plot_dual_metric(
     color: str,
     output_dir: Path,
     formats: Sequence[str],
-) -> None:
-    y_iter = np.array(iter_values, dtype=float) * 100.0
-    y_recall = np.array(
-        [np.nan if val is None else val * 100.0 for val in recall_deltas], dtype=float
+):
+    plt.rcParams.update({
+        "font.size": 8,
+        "axes.labelsize": 8,
+        "axes.titlesize": 9,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "legend.fontsize": 7,
+    })
+    W, H = compute_optimal_figsize(len(x_labels))
+    fig, ax_iter = plt.subplots(figsize=(W, H))
+    # ---- convert to % ----
+    y_iter = np.array(iter_values) * 100.0
+    y_recall = np.array([np.nan if v is None else v * 100.0 for v in recall_deltas])
+
+    # ---- Dynamic figure size (auto) ----
+    # W = max(3.6, 0.6 * len(x_labels))  # 避免 x 轴挤爆；随 bucket 增加自动加宽
+    # fig, ax_iter = plt.subplots(figsize=(W, 2.6))
+    ax_recall = ax_iter.twinx()
+
+    fig.suptitle(figure_title, y=1.03, fontsize=9)
+
+    pos = np.arange(len(x_labels))
+
+    # === BAR ===
+    bars = ax_iter.bar(
+        pos,
+        y_iter,
+        width=0.55,
+        color=color,
+        alpha=0.88,
+        edgecolor="#1A374D",
+        linewidth=0.4,
+        label=iter_label,
     )
 
-    fig, axes = plt.subplots(2, 1, figsize=(9, 6), sharex=True)
-    fig.suptitle(f"{figure_title}\n{format_title(dataset, config)}")
+    ax_iter.set_ylabel(iter_label)
+    ax_iter.set_xticks(pos)
+    ax_iter.set_xticklabels(x_labels)
 
-    axes[0].bar(x_labels, y_iter, color=color, alpha=0.85)
-    axes[0].axhline(0.0, color="#555555", linestyle="--", linewidth=1, alpha=0.5)
-    axes[0].set_ylabel(iter_label)
-    for idx, height in enumerate(y_iter):
-        if np.isnan(height):
+    # === LINE ===
+    recall_line = ax_recall.plot(
+        pos,
+        y_recall,
+        "-o",
+        markersize=3,
+        linewidth=1.2,
+        color="#6C5CE7",
+        label=recall_label,
+    )[0]
+
+    ax_recall.set_ylabel(recall_label)
+
+    # === GRID (iter axis only) ===
+    ax_iter.grid(axis="y", linestyle="--", linewidth=0.4, alpha=0.5)
+
+    # ---------------------------------------------------------
+    #  SMART LABEL POSITIONS (绝不遮挡)
+    # ---------------------------------------------------------
+
+    # 1) annotate bars above/below with dynamic offset
+    ylim_iter = ax_iter.get_ylim()
+    iter_range = ylim_iter[1] - ylim_iter[0]
+    bar_offset = iter_range * 0.03   # 3% of y-range
+
+    for bar in bars:
+        h = bar.get_height()
+        if np.isnan(h): 
             continue
-        axes[0].text(idx, height, f"{height:.1f}%", ha="center", va="bottom", fontsize=9)
+        y = h + (bar_offset if h >= 0 else -bar_offset)
+        ax_iter.text(
+            bar.get_x() + bar.get_width() / 2,
+            y,
+            f"{h:.1f}%",
+            ha="center",
+            va="bottom" if h >= 0 else "top",
+            fontsize=7,
+        )
 
-    axes[1].bar(x_labels, y_recall, color="#6C5CE7", alpha=0.85)
-    axes[1].axhline(0.0, color="#555555", linestyle="--", linewidth=1, alpha=0.5)
-    axes[1].set_ylabel(recall_label)
-    axes[1].set_xlabel("Difficulty Level (SearchResults quantiles)")
-    for idx, height in enumerate(y_recall):
-        if np.isnan(height):
+    # 2) annotate recall with dynamic offset (avoids bar area)
+    ylim_recall = ax_recall.get_ylim()
+    recall_range = ylim_recall[1] - ylim_recall[0]
+    rec_offset = recall_range * 0.04  # 4% of y-range
+
+    for i, val in enumerate(y_recall):
+        if np.isnan(val): 
             continue
-        axes[1].text(idx, height, f"{height:.2f}pp", ha="center", va="bottom", fontsize=9)
 
-    plt.tight_layout()
+        # 如果 recall 值落在 bar 的“视觉区域”，自适应偏移
+        # bar_top/bottom in recall-scale coordinates
+        bar_height = y_iter[i]
+        bar_y_min = ax_recall.transData.inverted().transform(
+            ax_iter.transData.transform((0, min(0, bar_height)))
+        )[1]
+        bar_y_max = ax_recall.transData.inverted().transform(
+            ax_iter.transData.transform((0, max(0, bar_height)))
+        )[1]
+
+        # 如果点落入柱子区域 → 自动往上/下移动
+        if bar_y_min <= val <= bar_y_max:
+            if val >= 0:
+                val_adj = val + rec_offset * 2.5
+            else:
+                val_adj = val - rec_offset * 2.5
+        else:
+            val_adj = val + (rec_offset if val >= 0 else -rec_offset)
+
+        ax_recall.text(
+            pos[i],
+            val_adj,
+            f"{val:.2f}",
+            ha="center",
+            va="bottom" if val_adj >= val else "top",
+            fontsize=7,
+            color="#6C5CE7",
+        )
+
+    # === Legend ===
+    ax_iter.legend(
+        [bars, recall_line],
+        [iter_label, recall_label],
+        loc="upper right",
+        frameon=False,
+        handlelength=1.8,
+    )
+
+    fig.tight_layout()
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    saved_paths = []
     for fmt in formats:
-        out_path = output_dir / f"{key}.{fmt}"
-        plt.savefig(out_path, format=fmt, dpi=300, bbox_inches="tight")
-        saved_paths.append(out_path)
-    plt.close(fig)
-    for path in saved_paths:
-        print(f"[OK] Saved plot: {path}")
+        fig.savefig(output_dir / f"{key}.{fmt}", dpi=320, bbox_inches="tight")
 
+    plt.close(fig)
 
 def main() -> int:
     args = parse_args()
