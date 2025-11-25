@@ -5,7 +5,8 @@ EXEC_NAME=${1:-}
 NUM_THREADS=${2:-}
 
 WORKSPACE_ROOT="/home/zqf/Hulu-Retriever"
-CONFIG_PATH="${WORKSPACE_ROOT}/configs/Config.json"
+# CONFIG_PATH="${WORKSPACE_ROOT}/configs/Config.json"
+CONFIG_PATH="/home/zqf/Hulu-Retriever/Config.json"
 EXEC_DIR="./execs"
 WARMUP_SCRIPT="${WORKSPACE_ROOT}/WarmUp/run_warmup.sh"
 WARMUP_BIN="${WORKSPACE_ROOT}/WarmUp/execs/warmup"
@@ -81,7 +82,11 @@ run_warmup() {
 
 ensure_clean_environment
 
+skip_datasets=()
 for DATASET_NAME in "${DATASETS[@]}"; do
+    if [[ " ${skip_datasets[@]} " =~ " ${DATASET_NAME} " ]]; then
+        continue
+    fi
     for ((i = 1; i <= REPEATS; i++)); do
         log "====================================="
         log "数据集: ${DATASET_NAME} | Repeat: ${i}"

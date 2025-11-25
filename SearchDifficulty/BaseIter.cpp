@@ -109,12 +109,12 @@ int main(int argc, char *argv[])
     // 更新局部变量 query_cnt，确保与调整后的 pc.query_cnt 一致
     query_cnt = pc.query_cnt;
     // std::vector<std::vector<double>> costs(3, std::vector<double>(pc.query_cnt - 1, 0));
-    std::vector<std::vector<double>> costs(3, std::vector<double>(pc.query_cnt, 0));
+    std::vector<std::vector<double>> costs(1, std::vector<double>(pc.query_cnt, 0));
     std::vector<std::vector<double>> recalls(1, std::vector<double>(pc.query_cnt, 0));
-    std::vector<std::vector<int>> iter_dist_counts(2, std::vector<int>(pc.query_cnt, 0));
-    auto block_res = get_block_size(pc.dev_path, pc.iovec_ext_number);
-    std::vector<IOuringManager*> ioers;
-    for (int i = 0; i < num_threads; i++) ioers.push_back(new IOuringManager(pc.io_depths, {pc.dev_path}, std::get<1>(block_res)));
+    std::vector<std::vector<int>> iter_counts(1, std::vector<int>(pc.query_cnt, 0));
+    // auto block_res = get_block_size(pc.dev_path, pc.iovec_ext_number);
+    // std::vector<IOuringManager*> ioers;
+    // for (int i = 0; i < num_threads; i++) ioers.push_back(new IOuringManager(pc.io_depths, {pc.dev_path}, std::get<1>(block_res)));
     
     // 根据parallel_mode选择不同的并行执行器
     auto parallel_executor = [&](auto fn) {
@@ -144,11 +144,11 @@ int main(int argc, char *argv[])
             gt_set.insert(static_cast<hnswlib::labeltype>(gt_top_k_indices[i]));
         }
         int iter_count = 0;
-        int dist_count = 0;
+        // int dist_count = 0;
     //     CPUProfiler cpu_profiler;
         auto hnswst = std::chrono::high_resolution_clock::now();
     //     cpu_profiler.start();
-        auto hnsw_result = alg_hnsw->searchKnnRecallCost((void*)(vecs[row].data()), cur_k, gt_set, iter_count, dist_count);
+        auto hnsw_result = alg_hnsw->searchKnnIterInfo((void*)(vecs[row].data()), cur_k, iter_count);
     //     cpu_profiler.stop();
         auto hnswed = std::chrono::high_resolution_clock::now();
         auto hnswcst = std::chrono::duration_cast<std::chrono::microseconds>(hnswed - hnswst).count();
@@ -160,13 +160,12 @@ int main(int argc, char *argv[])
             offset_list.emplace_back(tmp<<cfg.OFF_BITS_LEN);
         }
         recalls[0][row] = get_recall<ull, int64_t>(indexs, gt_top_k_indices, cur_k);
-        iter_dist_counts[0][row] = iter_count;
-        iter_dist_counts[1][row] = dist_count;
-        TimePoint io_start, io_end;
-        auto iost = std::chrono::high_resolution_clock::now();
-        ioers[threadId]->batch_read_offset(offset_list);
-        auto ioed = std::chrono::high_resolution_clock::now();
-        auto iocst = std::chrono::duration_cast<std::chrono::microseconds>(ioed - iost).count();
+        iter_counts[0][row] = iter_count;
+        // TimePoint io_start, io_end;
+        // auto iost = std::chrono::high_resolution_clock::now();
+        // ioers[threadId]->batch_read_offset(offset_list);
+        // auto ioed = std::chrono::high_resolution_clock::now();
+        // auto iocst = std::chrono::duration_cast<std::chrono::microseconds>(ioed - iost).count();
 
     //     // 可复现记录 HNSW + IO + CPU profiler
     //     TrackerQueryRecord record;
@@ -184,8 +183,8 @@ int main(int argc, char *argv[])
         // costs[2][row - 1] = hnswcst + iocst;
         // }
         costs[0][row] = hnswcst;
-        costs[1][row] = iocst;
-        costs[2][row] = hnswcst + iocst;
+        // costs[1][row] = iocst;
+        // costs[2][row] = hnswcst + iocst;
         // iocnts[0][row] = 1.0;     // mocktest
     });
 
@@ -193,15 +192,14 @@ int main(int argc, char *argv[])
     auto allcst = std::chrono::duration_cast<std::chrono::microseconds>(allend - allstart).count();
 
     // 输出 JSON / CSV
-    std::string out_dir = "/home/zqf/Hulu-Retriever/SearchDifficultyResults/BaselineResults/" + dataset_name + "/" + std::to_string(num_threads)+"_"
+    std::string out_dir = "/home/zqf/Hulu-Retriever/SearchDifficultyResults/BaseIterResults/" + dataset_name + "/" + std::to_string(num_threads)+"_"
         +std::to_string(pc.dataset.search_ef)+"_"+std::to_string(pc.io_depths)+"/"+std::to_string(query_cnt)+"/"+std::to_string(repeat_id);
     if (!std::filesystem::exists(out_dir)) std::filesystem::create_directories(out_dir);
-    generate_json_multi_T<double>(costs, {"hnsw","io","hnswio"}, query_cnt, out_dir + "/HNSWIO.json");
-    generate_json_multi_T<double>(recalls, {"recall"}, query_cnt, out_dir + "/HNSWIO_Recall.json");
-    generate_json_multi_T<int>(iter_dist_counts, {"iter_count","dist_count"}, query_cnt, out_dir + "/HNSWIO_IterDistCount.json");
+    generate_json_multi_T<double>(costs, {"hnsw"}, query_cnt, out_dir + "/HNSW.json");
+    generate_json_multi_T<double>(recalls, {"recall"}, query_cnt, out_dir + "/HNSW_Recall.json");
+    generate_json_multi_T<int>(iter_counts, {"iter_count"}, query_cnt, out_dir + "/HNSW_IterCount.json");
 
     vecs.clear();
-    for (auto ioer : ioers) delete ioer;
     delete alg_hnsw;
     return 0;
 }
