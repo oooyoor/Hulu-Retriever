@@ -1,0 +1,694 @@
+diff --git a/hnswlib/hnswalg.h b/hnswlib/hnswalg.h
+index e269ae6..9e68f53 100644
+--- a/hnswlib/hnswalg.h
++++ b/hnswlib/hnswalg.h
+@@ -2,6 +2,7 @@
+ 
+ #include "visited_list_pool.h"
+ #include "hnswlib.h"
++#include <future>
+ #include <atomic>
+ #include <random>
+ #include <stdlib.h>
+@@ -9,7 +10,7 @@
+ #include <unordered_set>
+ #include <list>
+ #include <memory>
+-
++#include "iouring_manager.hpp"
+ namespace hnswlib {
+ typedef unsigned int tableint;
+ typedef unsigned int linklistsizeint;
+@@ -439,6 +440,532 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+         return top_candidates;
+     }
+ 
++    template <bool bare_bone_search = true, bool collect_metrics = false>
++    void searchBaseLayerSTPrefetchBaseline(
++        tableint ep_id,
++        const void *data_point, 
++        size_t ef, size_t k, int stableiter,IOuringManager *ioer,
++        int least_else_size,
++        BaseFilterFunctor *isIdAllowed = nullptr,
++        BaseSearchStopCondition<dist_t> *stop_condition = nullptr) const
++    {
++        // hulu::logger->debug(fmt::format("searchBaseLayerSTPrefetch ep_id {} ", ep_id));
++        VisitedList *vl = visited_list_pool_->getFreeVisitedList();
++        vl_type *visited_array = vl->mass;
++        vl_type visited_array_tag = vl->curV;
++
++        // mocktest 不在此提前返回，保持流程一致；仅在添加 label 队列阶段做合法化转换。
++        // ----------------------------------------------------
++        // std::vector<int> iovecsidlist;
++        // std::map<hulu::ull, std::vector<hulu::ull>> block_offset_map;
++        // std::map<hulu::ull, int> iovecsedlist;
++        dist_t lK = 0;
++        dist_t prelK=0;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> only_top_candidates;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> else_only_top_candidates;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
++        int topunchangediter = 0;
++        bool prefetch = false;
++        // bool changed = false;
++        // int curiovecsst = 0;
++        // Fix for missing <future> include and non-portability: 
++        // Remove the use of std::future and io_futures if async IO is not supported, or replace with a portable alternative. 
++        // Commented out for now to fix compilation error.
++        std::vector<std::future<void>> io_futures; // 每个 query 一个 vector
++        // ----------------------------------------------------
++        dist_t lowerBound;
++        if (bare_bone_search ||
++            (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id)))))
++        {
++            char *ep_data = getDataByInternalId(ep_id);
++            dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_);
++            lowerBound = dist;
++            only_top_candidates.emplace(dist, ep_id);
++            lK=dist;
++            top_candidates.emplace(dist, ep_id);
++            if (!bare_bone_search && stop_condition)
++            {
++                stop_condition->add_point_to_result(getExternalLabel(ep_id), ep_data, dist);
++            }
++            candidate_set.emplace(-dist, ep_id);
++        }
++        else
++        {
++            lowerBound = std::numeric_limits<dist_t>::max();
++            candidate_set.emplace(-lowerBound, ep_id);
++        }
++        visited_array[ep_id] = visited_array_tag;
++        while (!candidate_set.empty())
++        {
++            std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
++            dist_t candidate_dist = -current_node_pair.first;
++
++            bool flag_stop_search;
++            if (bare_bone_search)
++            {
++                flag_stop_search = candidate_dist > lowerBound;
++            }
++            else
++            {
++                if (stop_condition)
++                {
++                    flag_stop_search = stop_condition->should_stop_search(candidate_dist, lowerBound);
++                }
++                else
++                {
++                    flag_stop_search = candidate_dist > lowerBound && top_candidates.size() == ef;
++                }
++            }
++            if (flag_stop_search)
++            {
++                break;
++            }
++            candidate_set.pop();
++            tableint current_node_id = current_node_pair.second;
++            int *data = (int *)get_linklist0(current_node_id);
++            size_t size = getListCount((linklistsizeint *)data);
++            //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
++            if (collect_metrics)
++            {
++                metric_hops++;
++                metric_distance_computations += size;
++            }
++
++#ifdef USE_SSE
++            _mm_prefetch((char *)(visited_array + *(data + 1)), _MM_HINT_T0);
++            _mm_prefetch((char *)(visited_array + *(data + 1) + 64), _MM_HINT_T0);
++            _mm_prefetch(data_level0_memory_ + (*(data + 1)) * size_data_per_element_ + offsetData_, _MM_HINT_T0);
++            _mm_prefetch((char *)(data + 2), _MM_HINT_T0);
++#endif
++            // ----------------------------------------------------
++            // changed = false;
++            // ----------------------------------------------------
++            for (size_t j = 1; j <= size; j++)
++            {
++                int candidate_id = *(data + j);
++//                    if (candidate_id == 0) continue;
++#ifdef USE_SSE
++                _mm_prefetch((char *)(visited_array + *(data + j + 1)), _MM_HINT_T0);
++                _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
++                                _MM_HINT_T0); ////////////
++#endif
++                if (!(visited_array[candidate_id] == visited_array_tag))
++                {
++                    visited_array[candidate_id] = visited_array_tag;
++
++                    char *currObj1 = (getDataByInternalId(candidate_id));
++                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
++
++                    bool flag_consider_candidate;
++                    if (!bare_bone_search && stop_condition)
++                    {
++                        flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
++                    }
++                    else
++                    {
++                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist;
++                    }
++
++                    if (flag_consider_candidate)
++                    {
++                        candidate_set.emplace(-dist, candidate_id);
++
++#ifdef USE_SSE
++                        _mm_prefetch(data_level0_memory_ + candidate_set.top().second * size_data_per_element_ +
++                                            offsetLevel0_, ///////////
++                                        _MM_HINT_T0);      ////////////////////////
++#endif
++
++                        if (bare_bone_search ||
++                            (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id)))))
++                        {
++                            
++                            top_candidates.emplace(dist, candidate_id);
++                            if(only_top_candidates.size()<k){
++                                only_top_candidates.emplace(dist, candidate_id);
++                            }else if(dist<lK){
++                                if(prefetch){
++                                    else_only_top_candidates.emplace(dist, candidate_id);
++                                }
++                                only_top_candidates.emplace(dist, candidate_id);
++                                only_top_candidates.pop();
++                            }
++                            lK=only_top_candidates.top().first;
++                            if (!bare_bone_search && stop_condition)
++                            {
++                                stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
++                            }
++                        }
++
++                        bool flag_remove_extra = false;
++                        if (!bare_bone_search && stop_condition)
++                        {
++                            flag_remove_extra = stop_condition->should_remove_extra();
++                        }
++                        else
++                        {
++                            flag_remove_extra = top_candidates.size() > ef;
++                        }
++                        while (flag_remove_extra)
++                        {
++                            tableint id = top_candidates.top().second;
++                            top_candidates.pop();
++                            if (!bare_bone_search && stop_condition)
++                            {
++                                stop_condition->remove_point_from_result(getExternalLabel(id), getDataByInternalId(id), dist);
++                                flag_remove_extra = stop_condition->should_remove_extra();
++                            }
++                            else
++                            {
++                                flag_remove_extra = top_candidates.size() > ef;
++                            }
++                        }
++
++                        if (!top_candidates.empty()){
++                            lowerBound = top_candidates.top().first;
++                        }
++                    }
++                }
++            }
++            if (!prefetch && only_top_candidates.size() >= k ){
++                if (prelK==0)
++                {
++                    prelK=lK;
++                }
++                else
++                {
++                    if (prelK == lK)
++                    {
++                        topunchangediter++;
++                        if(topunchangediter == stableiter){
++                            prefetch = true; 
++                            std::vector<off_t> cur_labels;
++                            while (!only_top_candidates.empty()) {
++                                cur_labels.emplace_back(getExternalLabel(only_top_candidates.top().second));
++                                only_top_candidates.pop();
++                            }
++                            // 当触发 prefetch
++                            io_futures.push_back(std::async(std::launch::async, [ioer, cur_labels](){
++                                auto labels_copy = cur_labels; // 创建副本
++                                ioer->base_read(labels_copy);
++                            }));
++                        }
++                    }else{
++                        topunchangediter=0;
++                        prelK=lK;
++                    }
++                }
++            }
++            else if(prefetch){
++                if(else_only_top_candidates.size()>=least_else_size){
++                    std::vector<off_t> elseprefetchindexs;
++                    while(!else_only_top_candidates.empty())
++                    {   
++                        elseprefetchindexs.emplace_back(getExternalLabel(else_only_top_candidates.top().second));
++                        else_only_top_candidates.pop();
++                    }
++                    
++                    // 当触发 prefetch
++                    io_futures.push_back(std::async(std::launch::async, [ioer, elseprefetchindexs](){
++                        auto labels_copy = elseprefetchindexs; // 创建副本
++                        ioer->base_read(labels_copy);
++                    }));
++                }               
++            }
++        }
++        // mocktest 不再特殊提前结束，保持与真实路径一致，所有合法化已在入队阶段完成。
++        if (!prefetch)
++        { // 1. 没有预取
++            // hulu::logger->debug(fmt::format("// 1. 没有预取 "));
++            std::vector<off_t> cur_labels;
++            while (!only_top_candidates.empty())
++            {
++                cur_labels.emplace_back(getExternalLabel(only_top_candidates.top().second));
++                only_top_candidates.pop();
++            }
++            ioer->base_read(cur_labels);
++        } // 2. 预取了
++        else if(else_only_top_candidates.size()>0){
++            std::vector<off_t> elseprefetchindexs;
++            while(!else_only_top_candidates.empty())
++            {   
++                elseprefetchindexs.emplace_back(getExternalLabel(else_only_top_candidates.top().second));
++                else_only_top_candidates.pop();
++            }
++            ioer->base_read(elseprefetchindexs);
++        }
++        visited_list_pool_->releaseVisitedList(vl);
++        // query 完成逻辑
++        for(auto &fut : io_futures) {
++            fut.get(); // 阻塞直到对应 IO 完成
++        }
++        return;
++    }
++
++
++    template <bool bare_bone_search = true, bool collect_metrics = false>
++    void searchBaseLayerSTPrefetchSpace(
++        tableint ep_id,
++        const void *data_point, 
++        size_t ef, size_t k, int stableiter,
++        int least_else_size,
++        int& iter_count ,
++        int& dist_count ,
++        int& start_prefetch_iter,
++        int& last_prefetch_iter,
++        int&  io_cnt,
++        BaseFilterFunctor *isIdAllowed = nullptr,
++        BaseSearchStopCondition<dist_t> *stop_condition = nullptr) const
++    {
++        // hulu::logger->debug(fmt::format("searchBaseLayerSTPrefetch ep_id {} ", ep_id));
++        VisitedList *vl = visited_list_pool_->getFreeVisitedList();
++        vl_type *visited_array = vl->mass;
++        vl_type visited_array_tag = vl->curV;
++
++        // mocktest 不在此提前返回，保持流程一致；仅在添加 label 队列阶段做合法化转换。
++        // ----------------------------------------------------
++        // std::vector<int> iovecsidlist;
++        // std::map<hulu::ull, std::vector<hulu::ull>> block_offset_map;
++        // std::map<hulu::ull, int> iovecsedlist;
++        dist_t lK = 0;
++        dist_t prelK=0;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> only_top_candidates;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> else_only_top_candidates;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
++        int topunchangediter = 0;
++        bool prefetch = false;
++        
++        // bool changed = false;
++        // int curiovecsst = 0;
++        // Fix for missing <future> include and non-portability: 
++        // Remove the use of std::future and io_futures if async IO is not supported, or replace with a portable alternative. 
++        // Commented out for now to fix compilation error.
++        std::vector<std::future<void>> io_futures; // 每个 query 一个 vector
++        // ----------------------------------------------------
++        dist_t lowerBound;
++        if (bare_bone_search ||
++            (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id)))))
++        {
++            char *ep_data = getDataByInternalId(ep_id);
++            dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_);
++            lowerBound = dist;
++            only_top_candidates.emplace(dist, ep_id);
++            lK=dist;
++            top_candidates.emplace(dist, ep_id);
++            if (!bare_bone_search && stop_condition)
++            {
++                stop_condition->add_point_to_result(getExternalLabel(ep_id), ep_data, dist);
++            }
++            candidate_set.emplace(-dist, ep_id);
++        }
++        else
++        {
++            lowerBound = std::numeric_limits<dist_t>::max();
++            candidate_set.emplace(-lowerBound, ep_id);
++        }
++        visited_array[ep_id] = visited_array_tag;
++        while (!candidate_set.empty())
++        {
++            std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
++            dist_t candidate_dist = -current_node_pair.first;
++
++            bool flag_stop_search;
++            if (bare_bone_search)
++            {
++                flag_stop_search = candidate_dist > lowerBound;
++            }
++            else
++            {
++                if (stop_condition)
++                {
++                    flag_stop_search = stop_condition->should_stop_search(candidate_dist, lowerBound);
++                }
++                else
++                {
++                    flag_stop_search = candidate_dist > lowerBound && top_candidates.size() == ef;
++                }
++            }
++            if (flag_stop_search)
++            {
++                break;
++            }
++            candidate_set.pop();
++            iter_count++;
++            tableint current_node_id = current_node_pair.second;
++            int *data = (int *)get_linklist0(current_node_id);
++            size_t size = getListCount((linklistsizeint *)data);
++            //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
++            if (collect_metrics)
++            {
++                metric_hops++;
++                metric_distance_computations += size;
++            }
++            dist_count+=size;
++#ifdef USE_SSE
++            _mm_prefetch((char *)(visited_array + *(data + 1)), _MM_HINT_T0);
++            _mm_prefetch((char *)(visited_array + *(data + 1) + 64), _MM_HINT_T0);
++            _mm_prefetch(data_level0_memory_ + (*(data + 1)) * size_data_per_element_ + offsetData_, _MM_HINT_T0);
++            _mm_prefetch((char *)(data + 2), _MM_HINT_T0);
++#endif
++            // ----------------------------------------------------
++            // changed = false;
++            // ----------------------------------------------------
++            for (size_t j = 1; j <= size; j++)
++            {
++                int candidate_id = *(data + j);
++//                    if (candidate_id == 0) continue;
++#ifdef USE_SSE
++                _mm_prefetch((char *)(visited_array + *(data + j + 1)), _MM_HINT_T0);
++                _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
++                                _MM_HINT_T0); ////////////
++#endif
++                if (!(visited_array[candidate_id] == visited_array_tag))
++                {
++                    visited_array[candidate_id] = visited_array_tag;
++
++                    char *currObj1 = (getDataByInternalId(candidate_id));
++                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
++
++                    bool flag_consider_candidate;
++                    if (!bare_bone_search && stop_condition)
++                    {
++                        flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
++                    }
++                    else
++                    {
++                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist;
++                    }
++
++                    if (flag_consider_candidate)
++                    {
++                        candidate_set.emplace(-dist, candidate_id);
++
++#ifdef USE_SSE
++                        _mm_prefetch(data_level0_memory_ + candidate_set.top().second * size_data_per_element_ +
++                                            offsetLevel0_, ///////////
++                                        _MM_HINT_T0);      ////////////////////////
++#endif
++
++                        if (bare_bone_search ||
++                            (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id)))))
++                        {
++                            
++                            top_candidates.emplace(dist, candidate_id);
++                            if(only_top_candidates.size()<k){
++                                only_top_candidates.emplace(dist, candidate_id);
++                            }else if(dist<lK){
++                                if(prefetch){
++                                    else_only_top_candidates.emplace(dist, candidate_id);
++                                }
++                                only_top_candidates.emplace(dist, candidate_id);
++                                only_top_candidates.pop();
++                            }
++                            lK=only_top_candidates.top().first;
++                            if (!bare_bone_search && stop_condition)
++                            {
++                                stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
++                            }
++                        }
++
++                        bool flag_remove_extra = false;
++                        if (!bare_bone_search && stop_condition)
++                        {
++                            flag_remove_extra = stop_condition->should_remove_extra();
++                        }
++                        else
++                        {
++                            flag_remove_extra = top_candidates.size() > ef;
++                        }
++                        while (flag_remove_extra)
++                        {
++                            tableint id = top_candidates.top().second;
++                            top_candidates.pop();
++                            if (!bare_bone_search && stop_condition)
++                            {
++                                stop_condition->remove_point_from_result(getExternalLabel(id), getDataByInternalId(id), dist);
++                                flag_remove_extra = stop_condition->should_remove_extra();
++                            }
++                            else
++                            {
++                                flag_remove_extra = top_candidates.size() > ef;
++                            }
++                        }
++
++                        if (!top_candidates.empty()){
++                            lowerBound = top_candidates.top().first;
++                        }
++                    }
++                }
++            }
++            if (!prefetch && only_top_candidates.size() >= k ){
++                if (prelK==0)
++                {
++                    prelK=lK;
++                }
++                else
++                {
++                    if (prelK == lK)
++                    {
++                        topunchangediter++;
++                        if(topunchangediter == stableiter){
++                            prefetch = true; 
++                            start_prefetch_iter=iter_count;
++                            last_prefetch_iter=iter_count;
++                            std::vector<off_t> cur_labels;
++                            while (!only_top_candidates.empty()) {
++                                cur_labels.emplace_back(getExternalLabel(only_top_candidates.top().second));
++                                only_top_candidates.pop();
++                            }
++                            io_cnt+=cur_labels.size();
++                        }
++                    }else{
++                        topunchangediter=0;
++                        prelK=lK;
++                    }
++                }
++            }
++            else if(prefetch){
++                if(else_only_top_candidates.size()>=least_else_size){
++                    std::vector<off_t> elseprefetchindexs;
++                    while(!else_only_top_candidates.empty())
++                    {   
++                        elseprefetchindexs.emplace_back(getExternalLabel(else_only_top_candidates.top().second));
++                        else_only_top_candidates.pop();
++                    }
++                    last_prefetch_iter=iter_count;
++                    io_cnt+=elseprefetchindexs.size();
++                }               
++            }
++        }
++        // mocktest 不再特殊提前结束，保持与真实路径一致，所有合法化已在入队阶段完成。
++        if (!prefetch)
++        { // 1. 没有预取
++            // hulu::logger->debug(fmt::format("// 1. 没有预取 "));
++            std::vector<off_t> cur_labels;
++            while (!only_top_candidates.empty())
++            {
++                cur_labels.emplace_back(getExternalLabel(only_top_candidates.top().second));
++                only_top_candidates.pop();
++            }
++            io_cnt+=cur_labels.size();
++            start_prefetch_iter=iter_count;
++            last_prefetch_iter=iter_count;
++        } // 2. 预取了
++        else if(else_only_top_candidates.size()>0){
++            std::vector<off_t> elseprefetchindexs;
++            while(!else_only_top_candidates.empty())
++            {   
++                elseprefetchindexs.emplace_back(getExternalLabel(else_only_top_candidates.top().second));
++                else_only_top_candidates.pop();
++            }
++            io_cnt+=elseprefetchindexs.size();
++            last_prefetch_iter=iter_count;
++        }
++        visited_list_pool_->releaseVisitedList(vl);
++        return;
++    }
+ 
+     void getNeighborsByHeuristic2(
+         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
+@@ -1323,6 +1850,139 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+         return result;
+     }
+ 
++    /**
++     * @brief searchKnnPrefetchBaseline
++     * @details 搜索过程中获取 topk labels，并触发 DiskVirManager 异步 IO 预取，实现 IO 与计算 overlap
++     * @param query_data 查询向量数据
++     * @param query_id 查询编号
++     * @param k topk 数量
++     * @param ioer IOuringManager 指针，用于异步 IO 预取
++     * @param labels_out 返回的 topk label 列表
++     * @param io_thread_id IO 线程编号（可选，用于多线程 IO 分发）
++     * @param mocktest 是否为 mock 测试（不实际 IO）
++     */
++    void searchKnnPrefetchBaseline(
++        const void *query_data,
++        size_t k,int stableiter,
++        IOuringManager *ioer,int least_else_size,
++        BaseFilterFunctor* isIdAllowed = nullptr
++    ) const{
++        if (cur_element_count == 0)
++            return;
++
++        tableint currObj = enterpoint_node_;
++        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
++
++        for (int level = maxlevel_; level > 0; level--)
++        {
++            bool changed = true;
++            while (changed)
++            {
++                changed = false;
++                unsigned int *data;
++
++                data = (unsigned int *)get_linklist(currObj, level);
++                int size = getListCount(data);
++                metric_hops++;
++                metric_distance_computations += size;
++
++                tableint *datal = (tableint *)(data + 1);
++                for (int i = 0; i < size; i++)
++                {
++                    tableint cand = datal[i];
++                    if (cand < 0 || cand > max_elements_)
++                        throw std::runtime_error("cand error");
++                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
++
++                    if (d < curdist)
++                    {
++                        curdist = d;
++                        currObj = cand;
++                        changed = true;
++                    }
++                }
++            }
++        }
++
++        bool bare_bone_search = !num_deleted_;
++        if (bare_bone_search)
++        {
++            searchBaseLayerSTPrefetchBaseline<true>(
++                currObj, query_data,std::max(ef_, k), k, stableiter, ioer, least_else_size,nullptr, nullptr);
++        }
++        else
++        {
++            searchBaseLayerSTPrefetchBaseline<false>(
++                currObj, query_data,std::max(ef_, k), k, stableiter,  ioer, least_else_size,nullptr, nullptr);
++        }
++        return;
++    }
++
++    void searchKnnPrefetchSpace(
++        const void *query_data,
++        size_t k,int stableiter,
++        int least_else_size,
++        int& iter_count ,
++        int& dist_count ,
++        int& start_prefetch_iter,
++        int& last_prefetch_iter,
++        int&  io_cnt,
++        BaseFilterFunctor* isIdAllowed = nullptr
++    ) const{
++        if (cur_element_count == 0)
++            return;
++
++        tableint currObj = enterpoint_node_;
++        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
++
++        for (int level = maxlevel_; level > 0; level--)
++        {
++            bool changed = true;
++            while (changed)
++            {
++                changed = false;
++                unsigned int *data;
++
++                data = (unsigned int *)get_linklist(currObj, level);
++                int size = getListCount(data);
++                metric_hops++;
++                metric_distance_computations += size;
++
++                tableint *datal = (tableint *)(data + 1);
++                for (int i = 0; i < size; i++)
++                {
++                    tableint cand = datal[i];
++                    if (cand < 0 || cand > max_elements_)
++                        throw std::runtime_error("cand error");
++                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
++
++                    if (d < curdist)
++                    {
++                        curdist = d;
++                        currObj = cand;
++                        changed = true;
++                    }
++                }
++            }
++        }
++
++        bool bare_bone_search = !num_deleted_;
++        if (bare_bone_search)
++        {
++            searchBaseLayerSTPrefetchSpace<true>(
++                currObj, query_data,std::max(ef_, k), k, stableiter, least_else_size, 
++                iter_count,dist_count,start_prefetch_iter,last_prefetch_iter,io_cnt,
++                nullptr, nullptr);
++        }
++        else
++        {
++            searchBaseLayerSTPrefetchSpace<false>(
++                currObj, query_data,std::max(ef_, k), k, stableiter, least_else_size,
++                iter_count,dist_count,start_prefetch_iter,last_prefetch_iter,io_cnt,
++                nullptr, nullptr);
++        }
++        return;
++    }
+ 
+     std::vector<std::pair<dist_t, labeltype >>
+     searchStopConditionClosest(

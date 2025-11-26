@@ -24,6 +24,38 @@
 class IOuringManager
 {
 public:
+    bool base_read(const std::vector<off_t>& offset_list)
+    {
+        int total = offset_list.size();
+        if (iovecs_number_ < total) {
+            throw std::runtime_error("Not enough registered buffers for batch read");
+        }
+        for (int i = 0; i < total; ++i) 
+        {
+            auto sqe = io_uring_get_sqe(&ring_);
+            // io_uring_prep_read(sqe, fds_[0], iovecs_[i].iov_base, iovecs_[i].iov_len, offset_list[i]);
+            io_uring_prep_readv(sqe, fds_[0], &iovecs_[iovec_id_], 1, offset_list[i]<<12);
+            iovec_id_ = (iovec_id_ + 1) % iovecs_number_;
+        }
+        io_uring_submit(&ring_);
+
+        int completed = 0;
+
+        while (completed < total)
+        {
+            struct io_uring_cqe* cqe;
+            int ret = io_uring_wait_cqe(&ring_, &cqe);
+            if (ret < 0)
+                throw std::runtime_error("wait_cqe error");  
+            if (cqe->res < 0)
+                printf("IO error %d\n", cqe->res);
+
+            completed++;
+            io_uring_cqe_seen(&ring_, cqe);
+        }
+        return true;
+    }
+
     // ================================================================================================
     // 单次批读测试（不依赖 iovec 注册）
     // ================================================================================================
@@ -161,6 +193,8 @@ private:
     ull disk_size_ = 0;
 
     int numa_node_for_iovecs_ = -1;
+
+    int iovec_id_ = 0;
 
     // ================================================================================================
     // NUMA 对齐分配

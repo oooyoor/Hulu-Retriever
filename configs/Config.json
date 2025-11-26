@@ -30,7 +30,9 @@
       "search_ef": 300,
       "stable_hops":20,
       "hop_diff_limit":2,
-      "break_percent":0.3
+      "break_percent":0.3,
+      "stable_iter":15,
+      "least_else_size":10
     },
     {
       "dataset_name": "deep",
@@ -43,7 +45,9 @@
       "search_ef": 400,
       "stable_hops":20,
       "hop_diff_limit":2,
-      "break_percent":0.3
+      "break_percent":0.3,
+      "stable_iter":25,
+      "least_else_size":10
     },
     {
       "dataset_name": "gist",
@@ -56,7 +60,9 @@
       "search_ef": 500,
       "stable_hops":30,
       "hop_diff_limit":2,
-      "break_percent":0.4
+      "break_percent":0.4,
+      "stable_iter":30,
+      "least_else_size":10
     },
     {
       "dataset_name": "glove1M",
@@ -69,7 +75,9 @@
       "search_ef": 500,
       "stable_hops":40,
       "hop_diff_limit":2,
-      "break_percent":0.4
+      "break_percent":0.4,
+      "stable_iter":30,
+      "least_else_size":10
     },
     {
       "dataset_name": "glove",
@@ -82,7 +90,9 @@
       "search_ef": 500,
       "stable_hops":40,
       "hop_diff_limit":2,
-      "break_percent":0.4
+      "break_percent":0.4,
+      "stable_iter":30,
+      "least_else_size":10
     },
     {
       "dataset_name": "mnist",
@@ -95,7 +105,9 @@
       "search_ef": 200,
       "stable_hops":8,
       "hop_diff_limit":2,
-      "break_percent":0.1
+      "break_percent":0.1,
+      "stable_iter":12,
+      "least_else_size":10
     },
     {
       "dataset_name": "fashion-mnist",
@@ -108,7 +120,9 @@
       "search_ef": 200,
       "stable_hops":8,
       "hop_diff_limit":2,
-      "break_percent":0.1
+      "break_percent":0.1,
+      "stable_iter":10,
+      "least_else_size":10
     }
   ]
 }
