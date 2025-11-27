@@ -24,36 +24,87 @@
 class IOuringManager
 {
 public:
-    bool base_read(const std::vector<off_t>& offset_list)
+    // ================================================================================================
+    // 新增：用于 ANN 搜索过程中 overlap 的“纯 submit”预取接口（不等待完成）
+    // ================================================================================================
+    void prefetch_offsets_overlap(const std::vector<off_t>& offset_list)
     {
-        int total = offset_list.size();
-        if (iovecs_number_ < total) {
-            throw std::runtime_error("Not enough registered buffers for batch read");
+        if (offset_list.empty()) return;
+        if (fds_.empty()) {
+            throw std::runtime_error("IOuringManager: no device registered (fds_ empty).");
         }
-        for (int i = 0; i < total; ++i) 
+
+        int fd = fds_[0];  // 这里假设 fds_[0] 是你的读 NVMe 设备 / 文件
+
+        unsigned submitted = 0;
+
+        for (off_t off : offset_list)
         {
-            auto sqe = io_uring_get_sqe(&ring_);
-            // io_uring_prep_read(sqe, fds_[0], iovecs_[i].iov_base, iovecs_[i].iov_len, offset_list[i]);
-            io_uring_prep_readv(sqe, fds_[0], &iovecs_[iovec_id_], 1, offset_list[i]<<12);
-            iovec_id_ = (iovec_id_ + 1) % iovecs_number_;
+            int slot_id = acquire_free_slot();
+            if (slot_id < 0) {
+                // 没有空闲 slot 了，先回收一部分完成事件再试一次
+                reclaim_completions(32);
+                slot_id = acquire_free_slot();
+                if (slot_id < 0) {
+                    // 实在拿不到，就提前结束这批预取
+                    break;
+                }
+            }
+
+            Slot& slot = slots_[slot_id];
+            slot.in_use = true;
+            slot.offset = off;
+
+            io_uring_sqe* sqe = io_uring_get_sqe(&ring_);
+            if (!sqe) {
+                // SQ ring 满了，先 submit 一波，再拿 sqe
+                if (submitted > 0) {
+                    io_uring_submit(&ring_);
+                    submitted = 0;
+                }
+                sqe = io_uring_get_sqe(&ring_);
+                if (!sqe) {
+                    // 还是拿不到，只能放弃本 slot
+                    slot.in_use = false;
+                    break;
+                }
+            }
+
+            // 使用已注册 buffer，对应 slot_id
+            // 每个 iovec 对应一个注册的 buffer，索引就是 slot_id
+            void* buf = iovecs_[slot_id].iov_base;
+            size_t len = iovecs_[slot_id].iov_len;
+
+            // 用 read_fixed，buffer index = slot_id
+            io_uring_prep_read_fixed(
+                sqe,
+                fd,
+                buf,
+                len,
+                off,
+                static_cast<unsigned>(slot_id)   // buf_index
+            );
+
+            // 把 slot_id 塞到 user_data 里，完成时用来找回
+            io_uring_sqe_set_data64(sqe, static_cast<std::uint64_t>(slot_id));
+
+            ++submitted;
         }
-        io_uring_submit(&ring_);
 
-        int completed = 0;
-
-        while (completed < total)
-        {
-            struct io_uring_cqe* cqe;
-            int ret = io_uring_wait_cqe(&ring_, &cqe);
-            if (ret < 0)
-                throw std::runtime_error("wait_cqe error");  
-            if (cqe->res < 0)
-                printf("IO error %d\n", cqe->res);
-
-            completed++;
-            io_uring_cqe_seen(&ring_, cqe);
+        if (submitted > 0) {
+            io_uring_submit(&ring_);
         }
-        return true;
+    }
+    // 搜索循环里偶尔调一下，非阻塞回收完成的 IO
+    void poll_completions_nonblock(int max_to_reclaim = 32)
+    {
+        reclaim_completions(max_to_reclaim);
+    }
+
+    // 某些场景（比如 query 完成、统计）想收干净所有 IO
+    void drain_all_completions()
+    {
+        reclaim_completions(-1);  // -1 表示不限
     }
 
     // ================================================================================================
@@ -167,11 +218,25 @@ public:
 
         if (!devpaths.empty())
             registerDevpath(devpaths);
+
+        // 初始化 slot 状态数组
+        if (iovecs_number_ > 0) {
+            slots_.resize(iovecs_number_);
+        }
     }
 
     ~IOuringManager()
     {
         io_uring_queue_exit(&ring_);
+        // 注意：iovecs_ 里的内存是我们自己 posix_memalign 的，需要手动 free
+        if (iovecs_) {
+            for (int i = 0; i < iovecs_number_; ++i) {
+                if (iovecs_[i].iov_base) {
+                    free(iovecs_[i].iov_base);
+                    iovecs_[i].iov_base = nullptr;
+                }
+            }
+        }
     }
 
 private:
@@ -194,7 +259,12 @@ private:
 
     int numa_node_for_iovecs_ = -1;
 
-    int iovec_id_ = 0;
+    // 每个注册 buffer（iovec）对应一个 slot
+    struct Slot {
+        bool in_use = false;
+        off_t offset = 0;
+    };
+    std::vector<Slot> slots_;
 
     // ================================================================================================
     // NUMA 对齐分配
@@ -280,5 +350,56 @@ private:
         if (io_uring_register_files(&ring_, fds_.data(), fds_.size()) < 0)
             throw std::system_error(errno, std::generic_category(),
                                     "io_uring_register_files failed");
+    }
+
+    // ================================================================================================
+    // slot / 完成事件管理
+    // ================================================================================================
+    int acquire_free_slot()
+    {
+        for (int i = 0; i < iovecs_number_; ++i) {
+            if (!slots_[i].in_use) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    void release_slot(int idx)
+    {
+        if (idx >= 0 && idx < iovecs_number_) {
+            slots_[idx].in_use = false;
+        }
+    }
+
+    // max_to_reclaim < 0 表示不限
+    void reclaim_completions(int max_to_reclaim)
+    {
+        io_uring_cqe* cqe = nullptr;
+        int reclaimed = 0;
+
+        while (true) {
+            int ret = io_uring_peek_cqe(&ring_, &cqe);
+            if (ret < 0 || !cqe) {
+                break;  // 没有更多完成事件
+            }
+
+            int slot_id = static_cast<int>(io_uring_cqe_get_data64(cqe));
+            if (slot_id >= 0 && slot_id < iovecs_number_) {
+                release_slot(slot_id);
+            }
+
+            if (cqe->res < 0) {
+                // 这里可以用 logger 记录 IO error
+                // printf("IO error %d\n", cqe->res);
+            }
+
+            io_uring_cqe_seen(&ring_, cqe);
+            ++reclaimed;
+
+            if (max_to_reclaim > 0 && reclaimed >= max_to_reclaim) {
+                break;
+            }
+        }
     }
 };

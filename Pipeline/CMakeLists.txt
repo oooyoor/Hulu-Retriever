@@ -17,7 +17,8 @@ message(STATUS "${LIBURING}/src/include")
 
 set(SRC    
     # ./HnswOffsetIO.cpp
-    ./Space.cpp
+    # ./Space.cpp
+    ./Time.cpp
     ${INCLUDE_DIR}/param_config.cpp
 )
 
