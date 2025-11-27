@@ -50,7 +50,7 @@ void generate_json_multi_T(const std::vector<std::vector<T>> &costs,
     nlohmann::json data = {
         {"avgcost", avgcostjson},
         {"entries", entries}};
-    // std::cout << output_path << std::endl;
+    
     std::ofstream fout(output_path);
     fout << data.dump(4);
     fout.close();
