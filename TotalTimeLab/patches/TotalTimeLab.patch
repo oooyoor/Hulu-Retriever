@@ -1,0 +1,1126 @@
+diff --git a/hnswlib/hnswalg.h b/hnswlib/hnswalg.h
+index e269ae6..694dad4 100644
+--- a/hnswlib/hnswalg.h
++++ b/hnswlib/hnswalg.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include "iouring_manager.hpp"
+ #include "visited_list_pool.h"
+ #include "hnswlib.h"
+ #include <atomic>
+@@ -9,6 +10,7 @@
+ #include <unordered_set>
+ #include <list>
+ #include <memory>
++#include "global_config.hpp"
+ 
+ namespace hnswlib {
+ typedef unsigned int tableint;
+@@ -169,6 +171,12 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+         }
+     };
+ 
++    struct CompareTupleByFirst {
++        constexpr bool operator()(std::tuple<dist_t, tableint, int> const& a,
++            std::tuple<dist_t, tableint, int> const& b) const noexcept {
++            return std::get<0>(a) < std::get<0>(b);
++        }
++    };
+ 
+     void setEf(size_t ef) {
+         ef_ = ef;
+@@ -270,79 +278,739 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+             _mm_prefetch(getDataByInternalId(*(datal + 1)), _MM_HINT_T0);
+ #endif
+ 
+-            for (size_t j = 0; j < size; j++) {
+-                tableint candidate_id = *(datal + j);
++            for (size_t j = 0; j < size; j++) {
++                tableint candidate_id = *(datal + j);
++//                    if (candidate_id == 0) continue;
++#ifdef USE_SSE
++                _mm_prefetch((char *) (visited_array + *(datal + j + 1)), _MM_HINT_T0);
++                _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
++#endif
++                if (visited_array[candidate_id] == visited_array_tag) continue;
++                visited_array[candidate_id] = visited_array_tag;
++                char *currObj1 = (getDataByInternalId(candidate_id));
++
++                dist_t dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
++                if (top_candidates.size() < ef_construction_ || lowerBound > dist1) {
++                    candidateSet.emplace(-dist1, candidate_id);
++#ifdef USE_SSE
++                    _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
++#endif
++
++                    if (!isMarkedDeleted(candidate_id))
++                        top_candidates.emplace(dist1, candidate_id);
++
++                    if (top_candidates.size() > ef_construction_)
++                        top_candidates.pop();
++
++                    if (!top_candidates.empty())
++                        lowerBound = top_candidates.top().first;
++                }
++            }
++        }
++        visited_list_pool_->releaseVisitedList(vl);
++
++        return top_candidates;
++    }
++
++
++    // bare_bone_search means there is no check for deletions and stop condition is ignored in return of extra performance
++    template <bool bare_bone_search = true, bool collect_metrics = false>
++    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
++    searchBaseLayerST(
++        tableint ep_id,
++        const void *data_point,
++        size_t ef,
++        BaseFilterFunctor* isIdAllowed = nullptr,
++        BaseSearchStopCondition<dist_t>* stop_condition = nullptr) const {
++        VisitedList *vl = visited_list_pool_->getFreeVisitedList();
++        vl_type *visited_array = vl->mass;
++        vl_type visited_array_tag = vl->curV;
++
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
++
++        dist_t lowerBound;
++        if (bare_bone_search || 
++            (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id))))) {
++            char* ep_data = getDataByInternalId(ep_id);
++            dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_);
++            lowerBound = dist;
++            top_candidates.emplace(dist, ep_id);
++            if (!bare_bone_search && stop_condition) {
++                stop_condition->add_point_to_result(getExternalLabel(ep_id), ep_data, dist);
++            }
++            candidate_set.emplace(-dist, ep_id);
++        } else {
++            lowerBound = std::numeric_limits<dist_t>::max();
++            candidate_set.emplace(-lowerBound, ep_id);
++        }
++
++        visited_array[ep_id] = visited_array_tag;
++
++        while (!candidate_set.empty()) {
++            std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
++            dist_t candidate_dist = -current_node_pair.first;
++
++            bool flag_stop_search;
++            if (bare_bone_search) {
++                flag_stop_search = candidate_dist > lowerBound;
++            } else {
++                if (stop_condition) {
++                    flag_stop_search = stop_condition->should_stop_search(candidate_dist, lowerBound);
++                } else {
++                    flag_stop_search = candidate_dist > lowerBound && top_candidates.size() == ef;
++                }
++            }
++            if (flag_stop_search) {
++                break;
++            }
++            candidate_set.pop();
++
++            tableint current_node_id = current_node_pair.second;
++            int *data = (int *) get_linklist0(current_node_id);
++            size_t size = getListCount((linklistsizeint*)data);
++//                bool cur_node_deleted = isMarkedDeleted(current_node_id);
++            if (collect_metrics) {
++                metric_hops++;
++                metric_distance_computations+=size;
++            }
++
++#ifdef USE_SSE
++            _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
++            _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
++            _mm_prefetch(data_level0_memory_ + (*(data + 1)) * size_data_per_element_ + offsetData_, _MM_HINT_T0);
++            _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
++#endif
++
++            for (size_t j = 1; j <= size; j++) {
++                int candidate_id = *(data + j);
++//                    if (candidate_id == 0) continue;
++#ifdef USE_SSE
++                _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
++                _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
++                                _MM_HINT_T0);  ////////////
++#endif
++                if (!(visited_array[candidate_id] == visited_array_tag)) {
++                    visited_array[candidate_id] = visited_array_tag;
++
++                    char *currObj1 = (getDataByInternalId(candidate_id));
++                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
++
++                    bool flag_consider_candidate;
++                    if (!bare_bone_search && stop_condition) {
++                        flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
++                    } else {
++                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist;
++                    }
++
++                    if (flag_consider_candidate) {
++                        candidate_set.emplace(-dist, candidate_id);
++#ifdef USE_SSE
++                        _mm_prefetch(data_level0_memory_ + candidate_set.top().second * size_data_per_element_ +
++                                        offsetLevel0_,  ///////////
++                                        _MM_HINT_T0);  ////////////////////////
++#endif
++
++                        if (bare_bone_search || 
++                            (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id))))) {
++                            top_candidates.emplace(dist, candidate_id);
++                            if (!bare_bone_search && stop_condition) {
++                                stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
++                            }
++                        }
++
++                        bool flag_remove_extra = false;
++                        if (!bare_bone_search && stop_condition) {
++                            flag_remove_extra = stop_condition->should_remove_extra();
++                        } else {
++                            flag_remove_extra = top_candidates.size() > ef;
++                        }
++                        while (flag_remove_extra) {
++                            tableint id = top_candidates.top().second;
++                            top_candidates.pop();
++                            if (!bare_bone_search && stop_condition) {
++                                stop_condition->remove_point_from_result(getExternalLabel(id), getDataByInternalId(id), dist);
++                                flag_remove_extra = stop_condition->should_remove_extra();
++                            } else {
++                                flag_remove_extra = top_candidates.size() > ef;
++                            }
++                        }
++
++                        if (!top_candidates.empty())
++                            lowerBound = top_candidates.top().first;
++                    }
++                }
++            }
++        }
++
++        visited_list_pool_->releaseVisitedList(vl);
++        return top_candidates;
++    }
++
++    // bare_bone_search means there is no check for deletions and stop condition is ignored in return of extra performance
++    template <bool bare_bone_search = true, bool collect_metrics = false>
++    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
++    searchBaseLayerSTCnt(
++        tableint ep_id,
++        const void *data_point,
++        size_t ef,
++        int &dist_count,
++        int &iter_count,
++        std::vector<int>& hop_id_list,
++        BaseFilterFunctor* isIdAllowed = nullptr,
++        BaseSearchStopCondition<dist_t>* stop_condition = nullptr) const {
++        VisitedList *vl = visited_list_pool_->getFreeVisitedList();
++        vl_type *visited_array = vl->mass;
++        vl_type visited_array_tag = vl->curV;
++
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
++        std::priority_queue<std::tuple<dist_t, tableint, int>, std::vector<std::tuple<dist_t, tableint, int>>, CompareTupleByFirst> candidate_set;
++
++        dist_t lowerBound;
++        if (bare_bone_search || 
++            (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id))))) {
++            char* ep_data = getDataByInternalId(ep_id);
++            dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_);
++            lowerBound = dist;
++            top_candidates.emplace(dist, ep_id);
++            if (!bare_bone_search && stop_condition) {
++                stop_condition->add_point_to_result(getExternalLabel(ep_id), ep_data, dist);
++            }
++            candidate_set.emplace(std::make_tuple(-dist, ep_id, 0));
++        } else {
++            lowerBound = std::numeric_limits<dist_t>::max();
++            candidate_set.emplace(std::make_tuple(-lowerBound, ep_id, 0));
++        }
++
++        visited_array[ep_id] = visited_array_tag;
++
++        while (!candidate_set.empty()) {
++            std::tuple<dist_t, tableint, int> current_node_tuple = candidate_set.top();
++            dist_t candidate_dist = -std::get<0>(current_node_tuple);
++
++            bool flag_stop_search;
++            if (bare_bone_search) {
++                flag_stop_search = candidate_dist > lowerBound;
++            } else {
++                if (stop_condition) {
++                    flag_stop_search = stop_condition->should_stop_search(candidate_dist, lowerBound);
++                } else {
++                    flag_stop_search = candidate_dist > lowerBound && top_candidates.size() == ef;
++                }
++            }
++            if (flag_stop_search) {
++                break;
++            }
++            candidate_set.pop();
++            iter_count++;
++            tableint current_node_id = std::get<1>(current_node_tuple);
++            int cur_hop_id=std::get<2>(current_node_tuple);
++            hop_id_list.push_back(cur_hop_id);
++            int *data = (int *) get_linklist0(current_node_id);
++            size_t size = getListCount((linklistsizeint*)data);
++//                bool cur_node_deleted = isMarkedDeleted(current_node_id);
++            if (collect_metrics) {
++                metric_hops++;
++                metric_distance_computations+=size;
++            }
++            dist_count+=size;
++#ifdef USE_SSE
++            _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
++            _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
++            _mm_prefetch(data_level0_memory_ + (*(data + 1)) * size_data_per_element_ + offsetData_, _MM_HINT_T0);
++            _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
++#endif
++
++            for (size_t j = 1; j <= size; j++) {
++                int candidate_id = *(data + j);
++//                    if (candidate_id == 0) continue;
++#ifdef USE_SSE
++                _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
++                _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
++                                _MM_HINT_T0);  ////////////
++#endif
++                if (!(visited_array[candidate_id] == visited_array_tag)) {
++                    visited_array[candidate_id] = visited_array_tag;
++
++                    char *currObj1 = (getDataByInternalId(candidate_id));
++                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
++
++                    bool flag_consider_candidate;
++                    if (!bare_bone_search && stop_condition) {
++                        flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
++                    } else {
++                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist;
++                    }
++
++                    if (flag_consider_candidate) {
++                        candidate_set.emplace(std::make_tuple(-dist, candidate_id, cur_hop_id+1));
++#ifdef USE_SSE
++                        _mm_prefetch(data_level0_memory_ + std::get<1>(candidate_set.top()) * size_data_per_element_ +
++                                        offsetLevel0_,  ///////////
++                                        _MM_HINT_T0);  ////////////////////////
++#endif
++
++                        if (bare_bone_search || 
++                            (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id))))) {
++                            top_candidates.emplace(dist, candidate_id);
++                            if (!bare_bone_search && stop_condition) {
++                                stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
++                            }
++                        }
++
++                        bool flag_remove_extra = false;
++                        if (!bare_bone_search && stop_condition) {
++                            flag_remove_extra = stop_condition->should_remove_extra();
++                        } else {
++                            flag_remove_extra = top_candidates.size() > ef;
++                        }
++                        while (flag_remove_extra) {
++                            tableint id = top_candidates.top().second;
++                            top_candidates.pop();
++                            if (!bare_bone_search && stop_condition) {
++                                stop_condition->remove_point_from_result(getExternalLabel(id), getDataByInternalId(id), dist);
++                                flag_remove_extra = stop_condition->should_remove_extra();
++                            } else {
++                                flag_remove_extra = top_candidates.size() > ef;
++                            }
++                        }
++
++                        if (!top_candidates.empty())
++                            lowerBound = top_candidates.top().first;
++                    }
++                }
++            }
++        }
++
++        visited_list_pool_->releaseVisitedList(vl);
++        return top_candidates;
++    }
++
++    template <bool bare_bone_search = true, bool collect_metrics = false>
++    std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
++    searchBaseLayerSTEarly(
++        tableint ep_id,
++        const void *data_point,
++        size_t ef,
++        int k,
++        int hop_diff_limit,
++        int stable_hops,
++        float start_precent,
++        float break_percent,
++        int &dist_count,
++        int &iter_count,
++        int& query_type,
++        BaseFilterFunctor* isIdAllowed = nullptr,
++        BaseSearchStopCondition<dist_t>* stop_condition = nullptr) const {
++        VisitedList *vl = visited_list_pool_->getFreeVisitedList();
++        vl_type *visited_array = vl->mass;
++        vl_type visited_array_tag = vl->curV;
++        auto& cfg = GlobalConfig::instance();
++        if(iter_count != 0 || dist_count != 0){
++            cfg.logger->error(fmt::format("iter_count is not zero, iter_count is {} ", iter_count));
++            cfg.logger->error(fmt::format("dist_count is not zero, dist_count is {} ", dist_count));
++            assert(false);
++        }
++        assert(iter_count == 0 && dist_count == 0);
++        // // ========== Hop-based Early Stopping规则 ==========
++        // struct SearchDynamics {
++        //     std::vector<int> hop_history;             // hop变化历史
++            
++        //     // ========== 简化的两阶段hop变化监测规则 ==========
++        //     enum class HopPhase {
++        //         MONOTONIC_ASCENDING,    // 阶段1：单调+1递增阶段
++        //         RANDOM_FLUCTUATION      // 阶段2：随机变化阶段
++        //     };
++            
++        //     HopPhase current_phase = HopPhase::MONOTONIC_ASCENDING;
++        //     int max_hop_reached = 0;              // 历史最大hop值
++        //     int advantage_hop = -1;               // 进入随机阶段前的优势hop值
++        //     int last_hop = -1;                    // 上一次的hop值
++            
++        //     // 随机阶段相关计数器
++        //     // int consecutive_hop_plus_one = 0;     // 连续hop+1次数
++        //     int exceed_limit_count = 0;           // 超出hop_diff_limit范围的次数
++            
++        //     // 记录hop信息
++        //     void record_iteration(int current_hop) {
++        //         hop_history.push_back(current_hop);
++                
++        //         if (current_hop > max_hop_reached) {
++        //             max_hop_reached = current_hop;
++        //         }
++        //     }
++            
++        //     // 分析hop变化模式的核心函数
++        //     void analyze_hop_changes(int current_hop, int hop_diff_limit,float lK,float curdist) {
++        //         if (last_hop == -1) {
++        //             last_hop = current_hop;
++        //             return;
++        //         }
++                
++        //         int hop_change = current_hop - last_hop;
++                
++        //         switch (current_phase) {
++        //             case HopPhase::MONOTONIC_ASCENDING:
++        //                 handle_monotonic_ascending_phase(current_hop, hop_change);
++        //                 break;
++                        
++        //             case HopPhase::RANDOM_FLUCTUATION:
++        //                 handle_random_fluctuation_phase(current_hop, hop_change, hop_diff_limit,lK,curdist);
++        //                 break;
++        //         }
++                
++        //         last_hop = current_hop;
++        //     }
++            
++        //     // 处理单调递增阶段
++        //     void handle_monotonic_ascending_phase(int current_hop, int hop_change) {
++        //         if (hop_change == 1) {
++        //             // 继续单调+1递增，保持在阶段1
++        //             return;
++        //         } else{
++        //             // 规则2.1→2.2：出现下降或不变，进入随机变化阶段
++        //             // hop_change > 1，大幅跳跃也进入随机阶段
++        //             advantage_hop = last_hop;  // 记录进入随机阶段前的优势hop
++        //             current_phase = HopPhase::RANDOM_FLUCTUATION;
++        //             // consecutive_hop_plus_one = 0;
++        //             exceed_limit_count = 0;
++        //         }
++        //     }
++            
++        //     // 处理随机变化阶段
++        //     void handle_random_fluctuation_phase(int current_hop, int hop_change, int hop_diff_limit,float lK,float curdist) {
++        //         if (hop_change == 1) {
++        //             // 规则3：随机阶段出现hop+1 --- 直接重置超出限制计数器 -- 由于重置计数器也不需要重新进入阶段1
++        //             // consecutive_hop_plus_one++;
++        //             exceed_limit_count = 0;
++                    
++        //             // // 规则5：如果hop+1导致新的max_hop，重新进入阶段1
++        //             // if (current_hop > max_hop_reached) {
++        //             //     current_phase = HopPhase::MONOTONIC_ASCENDING;
++        //             //     consecutive_hop_plus_one = 0;
++        //             //     exceed_limit_count = 0;
++        //             // }
++        //         } else {
++        //             // // hop不是+1的情况，重置连续hop+1计数器
++        //             // consecutive_hop_plus_one = 0;
++                    
++        //             // 规则4：检查当前hop与advantage_hop的差距 --- 可选 --- 但是现在暂时可以直接设置为不为1 --- 减少变化参数 （可选）
++        //             // if (abs(current_hop - advantage_hop) > hop_diff_limit) {
++        //             //     exceed_limit_count++;
++        //             // }
++        //             // // 在允许范围内则忽略，不增加exceed_limit_count
++
++        //             // 但是新规则：转为和lK进行比较
++        //             if (lK>0 && curdist > lK) {
++        //                 exceed_limit_count++;
++        //             }
++        //         }
++        //     }
++            
++        //     // 判断是否应该提前停止（简化的hop-based规则）
++        //     bool should_early_stop(int k, int stable_hops, size_t current_candidates_size) const {
++        //         // 基本前提：必须有足够的候选者
++        //         if (current_candidates_size < static_cast<size_t>(k)) {
++        //             return false;
++        //         }
++                
++        //         // 规则4：在随机阶段，如果超出范围的次数超过stable_hops，则退出
++        //         if (current_phase == HopPhase::RANDOM_FLUCTUATION && exceed_limit_count >= stable_hops) {
++        //             return true;
++        //         }
++                
++        //         return false;
++        //     }
++            
++        //     // 获取当前搜索状态的调试信息
++        //     std::string get_phase_description() const {
++        //         switch (current_phase) {
++        //             case HopPhase::MONOTONIC_ASCENDING:
++        //                 return "MONOTONIC_ASCENDING";
++        //             case HopPhase::RANDOM_FLUCTUATION:
++        //                 return "RANDOM_FLUCTUATION";
++        //             default:
++        //                 return "UNKNOWN";
++        //         }
++        //     }
++        // };
++        
++        // SearchDynamics dynamics;
++
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
++        // std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
++        std::priority_queue<std::tuple<dist_t, tableint, int>, std::vector<std::tuple<dist_t, tableint, int>>, CompareTupleByFirst> candidate_set;
++        // std::priority_queue<std::tuple<dist_t, tableint, int>, std::vector<std::tuple<dist_t, tableint, int>>, CompareTupleByFirst> top_candidates;
++
++        dist_t lowerBound;
++        if (bare_bone_search || 
++            (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id))))) {
++            char* ep_data = getDataByInternalId(ep_id);
++            dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_);
++            lowerBound = dist;
++            // top_candidates.emplace(dist, ep_id,0);
++            top_candidates.emplace(dist, ep_id);
++            if (!bare_bone_search && stop_condition) {
++                stop_condition->add_point_to_result(getExternalLabel(ep_id), ep_data, dist);
++            }
++            candidate_set.emplace(-dist, ep_id,0);
++        } else {
++            lowerBound = std::numeric_limits<dist_t>::max();
++            candidate_set.emplace(-lowerBound, ep_id,0);
++        }
++
++        visited_array[ep_id] = visited_array_tag;
++
++        // int max_visit_node_hop = 0;
++        int pre_visit_node_hop = -1;
++        // std::vector<int> descend_hop_list;
++        // std::set<int> advantage_hop_set;
++        int change_hop_count = 0;
++        bool early_stop_flag = false;
++        // int iteration_count = 0; // 迭代计数器
++        // float lK = -1; // 当前的第k小距离
++        int min_iter_count= ef * start_precent;
++        int max_iter_count = ef *(1-break_percent);
++        while (!candidate_set.empty()) {
++            std::tuple<dist_t, tableint, int> current_node_tuple = candidate_set.top();
++            dist_t candidate_dist = -std::get<0>(current_node_tuple);
++            tableint current_node_id = std::get<1>(current_node_tuple);
++            int cur_visit_node_hop = std::get<2>(current_node_tuple);
++            
++            // // ========== 动态参数记录和提前停止检查 ==========
++            // // 记录当前迭代的hop状态
++            // dynamics.record_iteration(cur_visit_node_hop);
++            
++            // // 调用hop变化分析
++            // dynamics.analyze_hop_changes(cur_visit_node_hop, hop_diff_limit,lK,candidate_dist);
++            
++            // // 检查是否应该提前停止（基于hop变化规则）
++            // if (iteration_count > k && // 至少执行k次迭代以确保基本质量
++            //     dynamics.should_early_stop(k, stable_hops, top_candidates.size())) {
++            //     // 提前停止
++            //     // 可选：输出调试信息
++            //     // std::cout << "Early stop at iteration " << iteration_count 
++            //     //           << ", phase: " << dynamics.get_phase_description()
++            //     //           << ", hop: " << cur_visit_node_hop 
++            //     //           << ", exceed_count: " << dynamics.exceed_limit_count << std::endl;
++            //     break;
++            // }
++            // iteration_count++;
++            if(pre_visit_node_hop!=-1){
++                if(pre_visit_node_hop-cur_visit_node_hop == 1){
++                    // cfg.logger->info(fmt::format("change_hop_count to zero, cur iter count is {} ", iter_count));
++                    change_hop_count=0;
++                }else if(std::abs(pre_visit_node_hop-cur_visit_node_hop) > hop_diff_limit){
++                    // cfg.logger->info(fmt::format("change_hop_count add 1 , cur iter count is {} ", iter_count));
++                    change_hop_count++;
++                }
++                if(top_candidates.size()>=k && iter_count>= min_iter_count && iter_count < max_iter_count && change_hop_count >= stable_hops){
++                // if(top_candidates.size()>=k && iter_count < max_iter_count && change_hop_count >= stable_hops){
++                    // cfg.logger->info(fmt::format("ready to break, cur iter count is {} ", iter_count));
++                    early_stop_flag = true;
++                    while(top_candidates.size()>k){
++                        top_candidates.pop();
++                    }
++                    return top_candidates;
++                }
++            }
++            pre_visit_node_hop = cur_visit_node_hop;
++            // cfg.logger->info(fmt::format("update pre_visit_node_hop {}, cur iter count is {} ", pre_visit_node_hop, iter_count));
++            
++            bool flag_stop_search;
++            if (bare_bone_search) {
++                flag_stop_search = candidate_dist > lowerBound;
++            } else {
++                if (stop_condition) {
++                    flag_stop_search = stop_condition->should_stop_search(candidate_dist, lowerBound);
++                } else {
++                    flag_stop_search = candidate_dist > lowerBound && top_candidates.size() == ef;
++                }
++            }
++            if (flag_stop_search) {
++                break;
++            }
++            candidate_set.pop();
++            iter_count++;
++            // // ========== Hop统计和分析 ==========
++            // // 更新hop统计信息（保持原有逻辑）
++            // if(pre_visit_node_hop== -1){
++            //     pre_visit_node_hop = cur_visit_node_hop;
++            // }else{
++            //     if(pre_visit_node_hop > cur_visit_node_hop){
++            //         descend_hop_count++;
++            //         descend_hop_list.push_back(cur_visit_node_hop);
++            //     }
++            //     pre_visit_node_hop = cur_visit_node_hop;
++            // }
++            
++            // // 更新最大访问hop数
++            // max_visit_node_hop = std::max(max_visit_node_hop, cur_visit_node_hop);
++            int *data = (int *) get_linklist0(current_node_id);
++            size_t size = getListCount((linklistsizeint*)data);
++//                bool cur_node_deleted = isMarkedDeleted(current_node_id);
++            if (collect_metrics) {
++                metric_hops++;
++                metric_distance_computations+=size;
++            }
++            dist_count+=size;
++#ifdef USE_SSE
++            _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
++            _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
++            _mm_prefetch(data_level0_memory_ + (*(data + 1)) * size_data_per_element_ + offsetData_, _MM_HINT_T0);
++            _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
++#endif
++
++            for (size_t j = 1; j <= size; j++) {
++                int candidate_id = *(data + j);
+ //                    if (candidate_id == 0) continue;
+ #ifdef USE_SSE
+-                _mm_prefetch((char *) (visited_array + *(datal + j + 1)), _MM_HINT_T0);
+-                _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
++                _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
++                _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
++                                _MM_HINT_T0);  ////////////
+ #endif
+-                if (visited_array[candidate_id] == visited_array_tag) continue;
+-                visited_array[candidate_id] = visited_array_tag;
+-                char *currObj1 = (getDataByInternalId(candidate_id));
++                if (!(visited_array[candidate_id] == visited_array_tag)) {
++                    visited_array[candidate_id] = visited_array_tag;
+ 
+-                dist_t dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
+-                if (top_candidates.size() < ef_construction_ || lowerBound > dist1) {
+-                    candidateSet.emplace(-dist1, candidate_id);
++                    char *currObj1 = (getDataByInternalId(candidate_id));
++                    dist_t dist = fstdistfunc_(data_point, currObj1, dist_func_param_);
++
++                    bool flag_consider_candidate;
++                    if (!bare_bone_search && stop_condition) {
++                        flag_consider_candidate = stop_condition->should_consider_candidate(dist, lowerBound);
++                    } else {
++                        flag_consider_candidate = top_candidates.size() < ef || lowerBound > dist;
++                    }
++
++                    if (flag_consider_candidate) {
++                        // candidate_set.emplace(-dist, candidate_id);
++                        candidate_set.emplace(-dist, candidate_id, cur_visit_node_hop+1);
+ #ifdef USE_SSE
+-                    _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
++                        _mm_prefetch(data_level0_memory_ + std::get<1>(candidate_set.top()) * size_data_per_element_ +
++                                        offsetLevel0_,  ///////////
++                                        _MM_HINT_T0);  ////////////////////////
+ #endif
+ 
+-                    if (!isMarkedDeleted(candidate_id))
+-                        top_candidates.emplace(dist1, candidate_id);
++                        if (bare_bone_search || 
++                            (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id))))) {
++                            top_candidates.emplace(dist, candidate_id);
++                            // top_candidates.emplace(dist, candidate_id, cur_visit_node_hop+1);
++                            if (!bare_bone_search && stop_condition) {
++                                stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
++                            }
++                        }
+ 
+-                    if (top_candidates.size() > ef_construction_)
+-                        top_candidates.pop();
++                        bool flag_remove_extra = false;
++                        if (!bare_bone_search && stop_condition) {
++                            flag_remove_extra = stop_condition->should_remove_extra();
++                        } else {
++                            flag_remove_extra = top_candidates.size() > ef;
++                        }
++                        while (flag_remove_extra) {
++                            tableint id = top_candidates.top().second;
++                            top_candidates.pop();
++                            if (!bare_bone_search && stop_condition) {
++                                stop_condition->remove_point_from_result(getExternalLabel(id), getDataByInternalId(id), dist);
++                                flag_remove_extra = stop_condition->should_remove_extra();
++                            } else {
++                                flag_remove_extra = top_candidates.size() > ef;
++                            }
++                        }
+ 
+-                    if (!top_candidates.empty())
+-                        lowerBound = top_candidates.top().first;
++                        if (!top_candidates.empty())
++                            lowerBound = top_candidates.top().first;
++                            // lowerBound = std::get<0>(top_candidates.top());
++                        
++                        // auto top_candidates_copy = top_candidates;
++                        // while(top_candidates_copy.size()>k){
++                        //     top_candidates_copy.pop();
++                        // }
++                        // if(top_candidates_copy.size()==k){
++                        //     lK = top_candidates_copy.top().first;
++                        // }
++                    }
+                 }
+             }
+         }
+-        visited_list_pool_->releaseVisitedList(vl);
+ 
++        visited_list_pool_->releaseVisitedList(vl);
+         return top_candidates;
+     }
+ 
+-
+-    // bare_bone_search means there is no check for deletions and stop condition is ignored in return of extra performance
+     template <bool bare_bone_search = true, bool collect_metrics = false>
+     std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst>
+-    searchBaseLayerST(
++    searchBaseLayerSTEarlyOverlap(
+         tableint ep_id,
+         const void *data_point,
+         size_t ef,
++        int k,
++        int hop_diff_limit,
++        int stable_hops,
++        float start_precent,
++        float break_percent,
++        int stableiter,
++        int least_else_size,
++        IOuringManager*& ioer,
+         BaseFilterFunctor* isIdAllowed = nullptr,
+         BaseSearchStopCondition<dist_t>* stop_condition = nullptr) const {
+         VisitedList *vl = visited_list_pool_->getFreeVisitedList();
+         vl_type *visited_array = vl->mass;
+         vl_type visited_array_tag = vl->curV;
+-
++        dist_t lK = 0;
++        dist_t prelK=0;
++        int topunchangediter = 0;
++        bool prefetch = false;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> only_top_candidates;
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> else_only_top_candidates;
+         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
+-        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> candidate_set;
+-
++        std::priority_queue<std::tuple<dist_t, tableint, int>, std::vector<std::tuple<dist_t, tableint, int>>, CompareTupleByFirst> candidate_set;
+         dist_t lowerBound;
+         if (bare_bone_search || 
+             (!isMarkedDeleted(ep_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(ep_id))))) {
+             char* ep_data = getDataByInternalId(ep_id);
+             dist_t dist = fstdistfunc_(data_point, ep_data, dist_func_param_);
+             lowerBound = dist;
++            only_top_candidates.emplace(dist, ep_id);
++            lK=dist;
+             top_candidates.emplace(dist, ep_id);
+             if (!bare_bone_search && stop_condition) {
+                 stop_condition->add_point_to_result(getExternalLabel(ep_id), ep_data, dist);
+             }
+-            candidate_set.emplace(-dist, ep_id);
++            candidate_set.emplace(-dist, ep_id,0);
+         } else {
+             lowerBound = std::numeric_limits<dist_t>::max();
+-            candidate_set.emplace(-lowerBound, ep_id);
++            candidate_set.emplace(-lowerBound, ep_id,0);
+         }
+ 
+         visited_array[ep_id] = visited_array_tag;
++        int iter_count=0;
++        int pre_visit_node_hop = -1;
++        int change_hop_count = 0;
++        bool early_stop_flag = false;
+ 
++        int min_iter_count= ef * start_precent;
++        int max_iter_count = ef *(1-break_percent);
+         while (!candidate_set.empty()) {
+-            std::pair<dist_t, tableint> current_node_pair = candidate_set.top();
+-            dist_t candidate_dist = -current_node_pair.first;
+-
++            std::tuple<dist_t, tableint, int> current_node_tuple = candidate_set.top();
++            dist_t candidate_dist = -std::get<0>(current_node_tuple);
++            tableint current_node_id = std::get<1>(current_node_tuple);
++            int cur_visit_node_hop = std::get<2>(current_node_tuple);
++
++            if(pre_visit_node_hop!=-1){
++                if(pre_visit_node_hop-cur_visit_node_hop == 1){
++                    change_hop_count=0;
++                }else if(std::abs(pre_visit_node_hop-cur_visit_node_hop) > hop_diff_limit){
++                    change_hop_count++;
++                }
++                if(top_candidates.size()>=k && iter_count>= min_iter_count && iter_count < max_iter_count && change_hop_count >= stable_hops){
++                    early_stop_flag = true;
++                    while(top_candidates.size()>k){
++                        top_candidates.pop();
++                    }
++                    return top_candidates;
++                }
++            }
++            pre_visit_node_hop = cur_visit_node_hop;
+             bool flag_stop_search;
+             if (bare_bone_search) {
+                 flag_stop_search = candidate_dist > lowerBound;
+@@ -357,8 +1025,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+                 break;
+             }
+             candidate_set.pop();
+-
+-            tableint current_node_id = current_node_pair.second;
++            iter_count++;
+             int *data = (int *) get_linklist0(current_node_id);
+             size_t size = getListCount((linklistsizeint*)data);
+ //                bool cur_node_deleted = isMarkedDeleted(current_node_id);
+@@ -366,7 +1033,6 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+                 metric_hops++;
+                 metric_distance_computations+=size;
+             }
+-
+ #ifdef USE_SSE
+             _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
+             _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
+@@ -396,9 +1062,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+                     }
+ 
+                     if (flag_consider_candidate) {
+-                        candidate_set.emplace(-dist, candidate_id);
++                        // candidate_set.emplace(-dist, candidate_id);
++                        candidate_set.emplace(-dist, candidate_id, cur_visit_node_hop+1);
+ #ifdef USE_SSE
+-                        _mm_prefetch(data_level0_memory_ + candidate_set.top().second * size_data_per_element_ +
++                        _mm_prefetch(data_level0_memory_ + std::get<1>(candidate_set.top()) * size_data_per_element_ +
+                                         offsetLevel0_,  ///////////
+                                         _MM_HINT_T0);  ////////////////////////
+ #endif
+@@ -406,6 +1073,16 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+                         if (bare_bone_search || 
+                             (!isMarkedDeleted(candidate_id) && ((!isIdAllowed) || (*isIdAllowed)(getExternalLabel(candidate_id))))) {
+                             top_candidates.emplace(dist, candidate_id);
++                            if(only_top_candidates.size()<k){
++                                only_top_candidates.emplace(dist, candidate_id);
++                            }else if(dist<lK){
++                                if(prefetch){
++                                    else_only_top_candidates.emplace(dist, candidate_id);
++                                }
++                                only_top_candidates.emplace(dist, candidate_id);
++                                only_top_candidates.pop();
++                            }
++                            lK=only_top_candidates.top().first;
+                             if (!bare_bone_search && stop_condition) {
+                                 stop_condition->add_point_to_result(getExternalLabel(candidate_id), currObj1, dist);
+                             }
+@@ -433,13 +1110,69 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+                     }
+                 }
+             }
++            if (!prefetch && only_top_candidates.size() >= k ){
++                if (prelK==0) prelK=lK;
++                else{
++                    if (prelK == lK){
++                        topunchangediter++;
++                        if(topunchangediter == stableiter){
++                            prefetch = true; 
++                            std::vector<off_t> cur_labels;
++                            while (!only_top_candidates.empty()) {
++                                cur_labels.emplace_back(getExternalLabel(only_top_candidates.top().second));
++                                only_top_candidates.pop();
++                            }
++                            if (ioer && !cur_labels.empty()) {
++                                ioer->prefetch_offsets_overlap(cur_labels);
++                            }
++                        }
++                    }else{
++                        topunchangediter=0;
++                        prelK=lK;
++                    }                    
++                }
++            }else if(prefetch){
++                if(else_only_top_candidates.size()>=least_else_size){
++                    std::vector<off_t> elseprefetchindexs;
++                    while(!else_only_top_candidates.empty())
++                    {   
++                        elseprefetchindexs.emplace_back(getExternalLabel(else_only_top_candidates.top().second));
++                        else_only_top_candidates.pop();
++                    }
++                    if (ioer && !elseprefetchindexs.empty()) {
++                        ioer->prefetch_offsets_overlap(elseprefetchindexs);
++                    }
++                }
++            }
++        }
++        if (!prefetch)
++        { // 1. 没有预取
++            std::vector<off_t> cur_labels;
++            while (!only_top_candidates.empty())
++            {
++                cur_labels.emplace_back(getExternalLabel(only_top_candidates.top().second));
++                only_top_candidates.pop();
++            }
++            if (ioer && !cur_labels.empty()) {
++                ioer->prefetch_offsets_overlap(cur_labels);
++            }
++        } // 2. 预取了
++        else if(else_only_top_candidates.size()>0){
++            std::vector<off_t> elseprefetchindexs;
++            while(!else_only_top_candidates.empty())
++            {   
++                elseprefetchindexs.emplace_back(getExternalLabel(else_only_top_candidates.top().second));
++                else_only_top_candidates.pop();
++            }
++            if (ioer && !elseprefetchindexs.empty()) {
++                ioer->prefetch_offsets_overlap(elseprefetchindexs);
++            }
+         }
+ 
+         visited_list_pool_->releaseVisitedList(vl);
+         return top_candidates;
+     }
+ 
+-
+     void getNeighborsByHeuristic2(
+         std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> &top_candidates,
+         const size_t M) {
+@@ -1323,6 +2056,205 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
+         return result;
+     }
+ 
++    std::priority_queue<std::pair<dist_t, labeltype >>
++    searchKnnCnt(const void *query_data, size_t k,
++        int &dist_count,
++        int &iter_count,
++        std::vector<int>& hop_id_list,
++        BaseFilterFunctor* isIdAllowed = nullptr) const {
++        std::priority_queue<std::pair<dist_t, labeltype >> result;
++        if (cur_element_count == 0) return result;
++
++        tableint currObj = enterpoint_node_;
++        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
++
++        for (int level = maxlevel_; level > 0; level--) {
++            bool changed = true;
++            while (changed) {
++                changed = false;
++                unsigned int *data;
++
++                data = (unsigned int *) get_linklist(currObj, level);
++                int size = getListCount(data);
++                metric_hops++;
++                metric_distance_computations+=size;
++
++                tableint *datal = (tableint *) (data + 1);
++                for (int i = 0; i < size; i++) {
++                    tableint cand = datal[i];
++                    if (cand < 0 || cand > max_elements_)
++                        throw std::runtime_error("cand error");
++                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
++
++                    if (d < curdist) {
++                        curdist = d;
++                        currObj = cand;
++                        changed = true;
++                    }
++                }
++            }
++        }
++
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
++        bool bare_bone_search = !num_deleted_ && !isIdAllowed;
++        if (bare_bone_search) {
++            top_candidates = searchBaseLayerSTCnt<true>(
++                    currObj, query_data, std::max(ef_, k), dist_count,iter_count,hop_id_list, isIdAllowed);
++        } else {
++            top_candidates = searchBaseLayerSTCnt<false>(
++                    currObj, query_data, std::max(ef_, k), dist_count,iter_count,hop_id_list, isIdAllowed);
++        }
++
++        while (top_candidates.size() > k) {
++            top_candidates.pop();
++        }
++        while (top_candidates.size() > 0) {
++            std::pair<dist_t, tableint> rez = top_candidates.top();
++            result.push(std::pair<dist_t, labeltype>(rez.first, getExternalLabel(rez.second)));
++            top_candidates.pop();
++        }
++        return result;
++    }
++
++    std::priority_queue<std::pair<dist_t, labeltype >>
++    searchKnnEarly(const void *query_data, size_t k, 
++        int hop_diff_limit,
++        int stable_hops,
++        float start_percent,
++        float break_percent,
++        int &dist_count,
++        int &iter_count,
++        BaseFilterFunctor* isIdAllowed = nullptr) const {
++        std::priority_queue<std::pair<dist_t, labeltype >> result;
++        if (cur_element_count == 0) return result;
++
++        tableint currObj = enterpoint_node_;
++        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
++
++        for (int level = maxlevel_; level > 0; level--) {
++            bool changed = true;
++            while (changed) {
++                changed = false;
++                unsigned int *data;
++
++                data = (unsigned int *) get_linklist(currObj, level);
++                int size = getListCount(data);
++                metric_hops++;
++                metric_distance_computations+=size;
++                // dist_count+=size;
++                tableint *datal = (tableint *) (data + 1);
++                for (int i = 0; i < size; i++) {
++                    tableint cand = datal[i];
++                    if (cand < 0 || cand > max_elements_)
++                        throw std::runtime_error("cand error");
++                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
++
++                    if (d < curdist) {
++                        curdist = d;
++                        currObj = cand;
++                        changed = true;
++                    }
++                }
++            }
++        }
++
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
++        bool bare_bone_search = !num_deleted_ && !isIdAllowed;
++        if (bare_bone_search) {
++            top_candidates = searchBaseLayerSTEarly<true>(
++                    currObj, query_data, std::max(ef_, k),k,hop_diff_limit,stable_hops,start_percent,break_percent,dist_count,iter_count,isIdAllowed);
++        } else {
++            top_candidates = searchBaseLayerSTEarly<false>(
++                    currObj, query_data, std::max(ef_, k),k,hop_diff_limit,stable_hops,start_percent,break_percent,dist_count,iter_count,isIdAllowed);
++        }
++
++        while (top_candidates.size() > k) {
++            top_candidates.pop();
++        }
++        while (top_candidates.size() > 0) {
++            std::pair<dist_t, tableint> rez = top_candidates.top();
++            result.push(std::pair<dist_t, labeltype>(rez.first, getExternalLabel(rez.second)));
++            top_candidates.pop();
++        }
++        return result;
++    }
++
++    std::priority_queue<std::pair<dist_t, labeltype >>
++    searchKnnEarlyOverlap(const void *query_data, size_t k, 
++        int hop_diff_limit,
++        int stable_hops,
++        float start_percent,
++        float break_percent,
++        int stableiter, 
++        int least_else_size,
++        IOuringManager*& ioer,
++        // int &iter_count,
++        // int &dist_count,
++        // int& start_prefetch_iter,
++        // int& last_prefetch_iter,
++        // int&  io_cnt,
++        // int& query_type,
++        BaseFilterFunctor* isIdAllowed = nullptr) const {
++        std::priority_queue<std::pair<dist_t, labeltype >> result;
++        if (cur_element_count == 0) return result;
++
++        tableint currObj = enterpoint_node_;
++        dist_t curdist = fstdistfunc_(query_data, getDataByInternalId(enterpoint_node_), dist_func_param_);
++
++        for (int level = maxlevel_; level > 0; level--) {
++            bool changed = true;
++            while (changed) {
++                changed = false;
++                unsigned int *data;
++
++                data = (unsigned int *) get_linklist(currObj, level);
++                int size = getListCount(data);
++                metric_hops++;
++                metric_distance_computations+=size;
++                // dist_count+=size;
++                tableint *datal = (tableint *) (data + 1);
++                for (int i = 0; i < size; i++) {
++                    tableint cand = datal[i];
++                    if (cand < 0 || cand > max_elements_)
++                        throw std::runtime_error("cand error");
++                    dist_t d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
++
++                    if (d < curdist) {
++                        curdist = d;
++                        currObj = cand;
++                        changed = true;
++                    }
++                }
++            }
++        }
++
++        std::priority_queue<std::pair<dist_t, tableint>, std::vector<std::pair<dist_t, tableint>>, CompareByFirst> top_candidates;
++        bool bare_bone_search = !num_deleted_ && !isIdAllowed;
++        if (bare_bone_search) {
++            top_candidates = searchBaseLayerSTEarlyOverlap<true>(
++                    currObj, query_data, std::max(ef_, k),k,hop_diff_limit,stable_hops,
++                    start_percent,break_percent,stableiter,least_else_size,ioer,
++                    // iter_count,dist_count,start_prefetch_iter,last_prefetch_iter,io_cnt,query_type,
++                    isIdAllowed);
++        } else {
++            top_candidates = searchBaseLayerSTEarlyOverlap<false>(
++                    currObj, query_data, std::max(ef_, k),k,hop_diff_limit,stable_hops,start_percent,
++                    break_percent,stableiter,least_else_size,ioer,
++                    // iter_count,dist_count,start_prefetch_iter,last_prefetch_iter,io_cnt,query_type,
++                    isIdAllowed);
++        }
++
++        while (top_candidates.size() > k) {
++            top_candidates.pop();
++        }
++        while (top_candidates.size() > 0) {
++            std::pair<dist_t, tableint> rez = top_candidates.top();
++            result.push(std::pair<dist_t, labeltype>(rez.first, getExternalLabel(rez.second)));
++            top_candidates.pop();
++        }
++        return result;
++    }
++
+ 
+     std::vector<std::pair<dist_t, labeltype >>
+     searchStopConditionClosest(
