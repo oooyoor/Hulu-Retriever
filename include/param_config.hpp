@@ -36,6 +36,7 @@ public:
     bool mocktest;
     int num_threads;
     int parallel_mode;
+    int fanout;  // Tree structure fanout (default: 100)
 
     std::string query_or_base;
 

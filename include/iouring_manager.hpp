@@ -119,10 +119,17 @@ public:
         }
         for (int i = 0; i < total; ++i) 
         {
+            // Check for empty path
+            if (file_paths[i].empty()) {
+                fprintf(stderr, "Error: Empty file path at index %d\n", i);
+                return false;
+            }
+            
             int fd = open(file_paths[i].c_str(),O_RDONLY | O_DIRECT);
             // int fd = open(file_paths[i].c_str(),O_RDONLY);
             if (fd < 0) {
-                perror("open");
+                fprintf(stderr, "Failed to open file: %s (errno=%d: %s)\n", 
+                        file_paths[i].c_str(), errno, strerror(errno));
                 return false;
             }
 

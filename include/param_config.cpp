@@ -22,6 +22,7 @@ void ParamConfig::load_from_json(const json& js, const std::string& dataset_name
     mocktest = js.value("mocktest", true);
     num_threads = js.value("num_threads", 1);
     parallel_mode = js.value("parallel_mode", 2);
+    fanout = js.value("fanout", 100);  // Default fanout: 100 (must match prepare_files.cpp)
     query_or_base = js.value("query_or_base", "query");
 
     // 选用 dataset_name
