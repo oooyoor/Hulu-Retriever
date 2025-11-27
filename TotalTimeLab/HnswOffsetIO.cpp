@@ -146,19 +146,11 @@ int main(int argc, char *argv[])
     //     CPUProfiler cpu_profiler;
         auto hnswst = std::chrono::high_resolution_clock::now();
     //     cpu_profiler.start();
-        auto hnsw_result = alg_hnsw->searchKnnEarlyOverlap((void*)(vecs[row].data()), cur_k,pc.dataset.hop_diff_limit,
+        alg_hnsw->searchKnnEarlyOverlap((void*)(vecs[row].data()), cur_k,pc.dataset.hop_diff_limit,
         pc.dataset.stable_hops,pc.dataset.start_percent,pc.dataset.break_percent,pc.dataset.stableiter,pc.dataset.least_else_size,ioers[threadId]);
     //     cpu_profiler.stop();
         auto hnswed = std::chrono::high_resolution_clock::now();
         auto hnswcst = std::chrono::duration_cast<std::chrono::microseconds>(hnswed - hnswst).count();
-        std::vector<off_t> offset_list;
-        std::vector<ull> indexs;
-        while (!hnsw_result.empty()) {
-            auto tmp = hnsw_result.top().second; hnsw_result.pop();
-            indexs.emplace_back(static_cast<ull>(tmp));
-            offset_list.emplace_back(tmp<<cfg.OFF_BITS_LEN);
-        }
-        recalls[0][row] = get_recall<ull, int64_t>(indexs, gt_top_k_indices, cur_k);
         // iter_dist_counts[0][row]=iter_count;
         // iter_dist_counts[1][row]=dist_count;
         auto iost = std::chrono::high_resolution_clock::now();
