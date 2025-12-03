@@ -22,7 +22,8 @@ if [[ ! -x "${EXEC_DIR}/${EXEC_NAME}" ]]; then
 fi
 
 mapfile -t DATASETS < <(jq -r '.dataset_list[].dataset_name' "$CONFIG_PATH")
-REPEATS=1
+# 为了让 avg_hnswtime 的统计更稳定，这里默认多次重复运行同一数据集
+REPEATS=20
 
 log()   { echo -e "\033[0;32m[RUN_TEST]\033[0m $1"; }
 warn()  { echo -e "\033[1;33m[RUN_TEST]\033[0m $1"; }
@@ -77,24 +78,23 @@ run_warmup() {
     ensure_clean_environment
     "$WARMUP_SCRIPT"
     wait_for_exit "$WARMUP_BIN" "warmup" 90
-    clear_cache
 }
 
 ensure_clean_environment
 
-# skip_datasets=("sift")
-skip_datasets=()
 for DATASET_NAME in "${DATASETS[@]}"; do
-    if [[ " ${skip_datasets[@]} " =~ " ${DATASET_NAME} " ]]; then
-        continue
-    fi
+    log "====================================="
+    log "数据集: ${DATASET_NAME} | 预热 warmup 一次"
+    log "====================================="
+
+    # 每个数据集只在开始时 warmup 一次，让数据和索引进入内存，
+    # 之后多次重复运行使用相同的热缓存，避免 I/O 抖动影响 avg_hnswtime。
+    run_warmup
+
     for ((i = 1; i <= REPEATS; i++)); do
         log "====================================="
-        log "数据集: ${DATASET_NAME} | Repeat: ${i}"
+        log "数据集: ${DATASET_NAME} | Repeat: ${i}/${REPEATS}"
         log "====================================="
-
-        run_warmup
-        clear_cache
 
         if [[ -n "$NUM_THREADS" ]]; then
             "${EXEC_DIR}/${EXEC_NAME}" "$CONFIG_PATH" "$DATASET_NAME" "$i" "$NUM_THREADS"
@@ -104,6 +104,7 @@ for DATASET_NAME in "${DATASETS[@]}"; do
 
         wait_for_exit "${EXEC_DIR}/${EXEC_NAME}" "${EXEC_NAME}" 180
 
-        sleep 5
+        # 短暂休眠，避免连续运行挤在同一个时间片上导致抖动
+        sleep 2
     done
 done
